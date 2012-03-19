@@ -86,37 +86,30 @@ structure HS = struct
   type subst = var * term
   fun lift (v,t) = (v+1,t)
 
-  datatype term_or_atom = M of term | R of atom
-
-  fun atomize (M (MAtom a)) = R a
-    | atomize e = e
-
   (* substTerm : subst -> term -> term
-   * substAtom : subst -> atom -> term_or_atom
+   * substAtom : subst -> atom -> term
    *)
   fun substTerm s (MLam (ty, body)) = MLam (ty, substTerm (lift s) body)
     | substTerm s (MPair p) = on MPair (substTerm s) p
     | substTerm s (MInt i) = MInt i
-    | substTerm s (MAtom a) = (case substAtom s a
-                                of M t => t
-                                 | R a' => MAtom a')
+    | substTerm s (MAtom a) = substAtom s a
 
   and substAtom (v,t) (r as RVar v') =
-      if vareq (v,v') then M t else R r
+      if vareq (v,v') then t else MAtom r
     | substAtom s (RApp (r,m)) =
       let val m' = substTerm s m
-      in case atomize (substAtom s r)
-          of R r' => R (RApp (r', m'))
-           | M (MLam (_,e)) =>
+      in case substAtom s r
+          of MAtom r' => MAtom (RApp (r', m'))
+           | MLam (_, e) =>
              (* this is the hereditary substitution case. *)
-             M (substTerm (0,m') e)
-           | M _ => raise TypeError "impossible"
+             (substTerm (0,m') e)
+           | _ => raise TypeError "impossible"
       end
     | substAtom s (RProj (d,r)) =
-      (case atomize (substAtom s r)
-        of R r' => R (RProj (d,r'))
-         | M (MPair p) => M (proj d p)
-         | M _ => raise TypeError "impossible")
+      (case substAtom s r
+        of MAtom r' => MAtom (RProj (d,r'))
+         | MPair p => proj d p
+         | _ => raise TypeError "impossible")
 
 
   (* converting exps to terms (ie. canonicalizing) *)
