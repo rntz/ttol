@@ -16,7 +16,9 @@ structure HS = struct
 
   val tpeq : tp * tp -> bool = op=
 
-  datatype proj = left | right
+  datatype proj = L | R
+  fun proj L (x,_) = x
+    | proj R (_,y) = y
 
   datatype exp = ELam of tp * exp | EApp of exp * exp
                | EPair of exp * exp | EProj of proj * exp
@@ -58,9 +60,9 @@ structure HS = struct
           of TArr (t1,t2) => (checkType t1 mt "ill-typed function argument"; t2)
            | _ => raise TypeError "application of non-function"
       end
-    | inferAtom cx (RProj (p,a)) =
+    | inferAtom cx (RProj (d,a)) =
       (case inferAtom cx a
-        of TProd (l,r) => (case p of left => l | right => r)
+        of TProd p => proj d p
          | _ => raise TypeError "projection from non-pair")
 
   fun inferExp cx (ELam (argty, body)) =
@@ -74,9 +76,9 @@ structure HS = struct
           of TArr (t1,t2) => (checkType t1 at "ill-typed function argument"; t2)
            | _ => raise TypeError "application of non-function"
       end
-    | inferExp cx (EProj (p,e)) =
+    | inferExp cx (EProj (d,e)) =
       (case inferExp cx e
-        of TProd (l,r) => (case p of left => l | right => r)
+        of TProd p => proj d p
          | _ => raise TypeError "projection from non-pair")
 
 
@@ -110,10 +112,10 @@ structure HS = struct
              M (substTerm (0,m') e)
            | M _ => raise TypeError "impossible"
       end
-    | substAtom s (RProj (p,r)) =
+    | substAtom s (RProj (d,r)) =
       (case atomize (substAtom s r)
-        of R r' => R (RProj (p,r'))
-         | M (MPair (l,r)) => M (case p of left => l | right => r)
+        of R r' => R (RProj (d,r'))
+         | M (MPair p) => M (proj d p)
          | M _ => raise TypeError "impossible")
 
 
@@ -128,10 +130,10 @@ structure HS = struct
         of (MLam (_, body), arg) => substTerm (0,arg) body
          | (MAtom r, arg) => MAtom (RApp (r, arg))
          | _ => raise TypeError "impossible")
-    | canonicalize (EProj (p,e)) =
+    | canonicalize (EProj (d,e)) =
       (case canonicalize e
-        of MPair (l,r) => (case p of left => l | right => r)
-         | MAtom r => MAtom (RProj (p,r))
+        of MPair p => proj d p
+         | MAtom r => MAtom (RProj (d,r))
          | _ => raise TypeError "impossible")
 
   end                           (* local open Util in *)
