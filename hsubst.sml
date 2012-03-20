@@ -34,24 +34,6 @@ structure Util = struct
       in foldr join nil o sort cmp
       end
 
-  (* (* submultiset : ('a * 'a -> order) -> 'a list -> 'a list -> bool
-   *  * Precondition: input lists sorted. *)
-   * fun submultiset _ [] _ = true
-   *   | submultiset _ _ [] = false
-   *   | submultiset cmp (X as x::xs) (Y as y::ys) =
-   *     (case cmp (x,y)
-   *       of EQUAL => submultiset cmp xs ys
-   *        | GREATER => submultiset cmp X ys
-   *        | LESS => false) *)
-
-  fun winner max =
-      treeFoldList NONE SOME (fn (NONE,x) => x
-                               | (x,NONE) => x
-                               | (SOME a, SOME b) => SOME (max (a,b)))
-
-  val maximum = winner Int.max
-  val minimum = winner Int.min
-
 end
 
 
@@ -187,9 +169,7 @@ structure HS = struct
   type subst1 = var * term
 
   fun checkSubst1Term (v,t) m =
-      ((case maximum (termFV m)
-         of SOME v' => (v' <= v)
-          | NONE => true)
+      (List.all (fn v' => v' <= v) (termFV m)
        orelse raise TypeError "not largest free var";
        ())
 
