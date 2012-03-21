@@ -1,4 +1,5 @@
 structure Util = struct
+  fun id x = x
   fun curry f x y = f (x,y)
   fun uncurry f (x,y) = f x y
   fun flip f x y = f y x

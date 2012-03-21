@@ -160,36 +160,24 @@ structure XS2 = struct
                  | NotLam of term view
   exception Stuck of stuck
 
-  (* eval : exp -> exp
+  (* eval : subst -> term -> exp
    *
-   * NB. assumes things in substitution are already evalled.
+   * Precondition: terms in substitution are values.
    *)
-  fun eval (e as Exp (s, Term t)) : exp =
-      case t
-       of Lam _ => e            (* done. *)
-        | Var i =>
-          (* not sure this will use the correct env for evaluating the thing
-           * looked up. Do we want (evalS s) instead? *)
-          (* a hacked version of lookup *)
-          lookup (fn i => raise Stuck (Unbound i)) eval s i
-        | App (f,a) =>
-          (case eval (Exp (s, f))
-            of Exp (fsub, Term (Lam fbody)) =>
-               let val ae = eval (Exp (s, a))
-               in eval (Exp (ae % (fsub %@ up 1), fbody))
-               end
-             | Exp (_, Term t) => raise Stuck (NotLam t))
+  fun eval (e as Exp (_, Term (Lam _))) = e (* sharing optimization *)
+    | eval (Exp (s, t)) = evalIn s t
 
-  (* fun eval e =
-   *     case show e
-   *      of Var i => raise Stuck (Unbound i)
-   *       | App (f,a) =>
-   *         (case eval f
-   *           of Exp (fsub, Term (Lam fbody)) =>
-   *              let val ae = eval a
-   *              in eval (Exp (ae % (fsub %@ up 1), fbody))
-   *              end
-   *            | Exp (_, Term t) => raise Stuck (NotLam t)) *)
+  and evalIn s (term as Term t) =
+      case t
+       of Lam _ => Exp (s, term) (* done. *)
+        | Var i =>
+          (* NB. use of "id" justified by precondition *)
+          lookup (fn i => raise Stuck (Unbound i)) id s i
+        | App (f,a) =>
+          (case evalIn s f
+            of Exp (fsub, Term (Lam fbody)) =>
+               evalIn (evalIn s a % (fsub %@ up 1)) fbody
+             | Exp (_, Term t) => raise Stuck (NotLam t))
 
   end                           (* local open Util in *)
 end
