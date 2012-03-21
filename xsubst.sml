@@ -20,7 +20,7 @@ structure XSub = struct
 end
 
 
-structure XS = struct
+structure XSOld = struct
   local open Util in
 
   open XSub
@@ -64,6 +64,10 @@ structure XS = struct
               | Lam e => Lam (subst (hvar 0 % (s %@ up 1)) e)
 
   (* Evaluation. *)
+  (* BUG: eval and evalSub generate a bunch of garbage in the substitutions of
+   * the exps they output. In particular, they are not the identity, or even
+   * idempotent, on values. eval (\x.x) just keeps getting larger and larger.
+   *)
   datatype stuck = Unbound of var
                  | NotLam of exp view
   exception Stuck of stuck
@@ -109,7 +113,8 @@ structure XS = struct
 end
 
 
-structure XS2 = struct
+(* This version has a much better-behaved eval. *)
+structure XS = struct
   local open Util in
 
   open XSub
