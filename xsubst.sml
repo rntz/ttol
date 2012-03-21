@@ -146,13 +146,15 @@ structure XS = struct
 
   and subst s2 (Exp (s1, t)) = Exp (s1 %@ s2, t)
 
-  (* lookup : (var -> 'a) -> (exp -> 'a) -> exp subst -> var -> 'a
+  (* lookup : (var -> 'b) -> ('a -> 'b) -> 'a subst -> var -> 'b
    *
    * An odd function, but useful.
    *)
   fun lookup v _ (up k) i = v (i+k)
     | lookup _ f (e % _) 0 = f e
     | lookup v f (_ % s) i = lookup v f s (i-1)
+
+  val lookup : (var -> 'b) -> ('a -> 'b) -> 'a subst -> var -> 'b = lookup
 
   (* show : exp -> exp view *)
   fun show (Exp (s, Term t)) =
@@ -165,7 +167,8 @@ structure XS = struct
                  | NotLam of term view
   exception Stuck of stuck
 
-  (* eval : subst -> term -> exp
+  (* eval : exp -> exp
+   * evalIn : exp subst -> term -> exp
    *
    * Precondition: terms in substitution are values.
    *)
@@ -186,3 +189,47 @@ structure XS = struct
 
   end                           (* local open Util in *)
 end
+
+
+(* Version which separates exps and values. *)
+structure XSV = struct
+  local open Util in
+
+  open XS
+  infixr %
+  infixr %@
+
+  (* NOTE: I think the clarity of substs would probably improve here if we just
+   * represented them as (int * value list). Might be a performance win, too.
+   *
+   * Also, I think the "up k" in a subst inside a closure might be guaranteed to
+   * be equal to the number of values preceding it (the length of the subst).
+   *)
+  datatype value = Closure of value subst * term (* binds *)
+
+  (* op%@ : value subst * value subst -> value subst
+   *
+   * Think of s1 %@ s2 as "s1, then s2".
+   *)
+  fun s %@ (up 0) = s        (* useful optimization *)
+    (* TODO: check how often this^ branch is actually taken *)
+    | (up 0) %@ s = s
+    | (up k) %@ (up l) = up (k+l)
+    | (up k) %@ (_ % s) = up (k-1) %@ s
+    (* values don't depend on environment. *)
+    | (v % s1) %@ s2 = v % (s1 %@ s2)
+
+  (* valueIn : value subst -> term -> value
+   *)
+  fun valueIn s (term as Term t) =
+      case t
+       of Lam body => Closure (s, body)
+        | Var i => lookup (fn i => raise Stuck (Unbound i)) id s i
+        | App (f,a) =>
+          let val Closure (fenv, fbody) = valueIn s f
+          in valueIn (valueIn s a % (fenv %@ up 1)) fbody
+          end
+
+  end                           (* local open Util in *)
+end
+
