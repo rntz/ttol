@@ -85,12 +85,13 @@ structure XSOld = struct
               | Const _ => e
 
   (* Evaluation. *)
-  (* BUG: eval and evalSub generate a bunch of garbage in the substitutions of
-   * the exps they output. In particular, they are not the identity, or even
-   * idempotent, on values. eval (\x.x) just keeps getting larger and larger.
+  (* This code used to have a "bug" where eval and evalSub would generate a
+   * bunch of unnecessary stuff in the substitutions of the exps they output. In
+   * particular, they weren't the identity, or even idempotent, on values. eval
+   * (\x.x) just kept getting larger and larger.
    *
-   * I've changed the code slightly since then and I'm not sure whether this
-   * still happens.
+   * I've changed the code and this no longer seems to occur, but a proof would
+   * be nice, if I can figure out what the theorem statement should even /be/.
    *)
   datatype stuck = Unbound of var
                  | NotLam of exp view
@@ -104,12 +105,12 @@ structure XSOld = struct
        of Var i => raise Stuck (Unbound i)
         | App (f,a) =>
           let val body = getLam (show (eval f))
-          in (* we get call-by-name semantics if here we do instead:
+          in (* we should get call-by-name semantics if here we do instead:
               *   eval (subst (a % sid) body)
               *)
               eval (subst (eval a % sid) body)
           end
-        | e as Lam _ => exp (* used to be (hide e) *)
+        | e as Lam _ => exp (* was (hide e), which caused aforementioned bug *)
         | Const _ => exp
 
   (* evalSub : exp subst -> exp -> exp view
@@ -243,7 +244,7 @@ structure XSV = struct
    *
    * Think of s1 %@ s2 as "s1, then s2".
    *)
-  fun s %@ (up 0) = s        (* useful optimization *)
+  fun s %@ (up 0) = s (* useful optimization *)
     (* TODO: check how often this^ branch is actually taken *)
     | (up 0) %@ s = s
     | (up k) %@ (up l) = up (k+l)
