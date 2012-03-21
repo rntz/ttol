@@ -1,3 +1,8 @@
+structure Base = struct
+  datatype value = Int of int
+                 | String of string
+end
+
 (* Explicit substitutions *)
 structure XSub = struct
   local open Util in
@@ -15,6 +20,21 @@ structure XSub = struct
   datatype 'a view = Lam of 'a
                    | App of 'a * 'a
                    | Var of var
+                   | Const of Base.value
+
+  fun church hide =
+      let val vf = hide (Var 1)
+          val vx = hide (Var 0)
+          fun f 0 = vx
+            | f n = hide (App (vf, f (n-1)))
+      in hide o Lam o hide o Lam o f
+      end
+
+  fun mult hide =
+      let val [vn, vm, vx] = map (hide o Var) [2,1,0]
+      in (hide o Lam o hide o Lam o hide o Lam o hide)
+         (App (vn, hide (App (vm, vx))))
+      end
 
   end                           (* local open Util *)
 end
@@ -58,15 +78,19 @@ structure XSOld = struct
   (* show : exp -> exp view *)
   fun show (Exp (s, e)) =
       (* XXX this case is a hack. shouldn't be useful/necessary, but is. *)
-      case s of up 0 => e | _ =>
+      (* case s of up 0 => e | _ => *)
       case e of Var v => lookup show s v
               | App p => on App (subst s) p
               | Lam e => Lam (subst (hvar 0 % (s %@ up 1)) e)
+              | Const _ => e
 
   (* Evaluation. *)
   (* BUG: eval and evalSub generate a bunch of garbage in the substitutions of
    * the exps they output. In particular, they are not the identity, or even
    * idempotent, on values. eval (\x.x) just keeps getting larger and larger.
+   *
+   * I've changed the code slightly since then and I'm not sure whether this
+   * still happens.
    *)
   datatype stuck = Unbound of var
                  | NotLam of exp view
@@ -75,8 +99,8 @@ structure XSOld = struct
     | getLam e = raise Stuck (NotLam e)
 
   (* A direct definition of eval. *)
-  fun eval e =
-      case show e
+  fun eval exp =
+      case show exp
        of Var i => raise Stuck (Unbound i)
         | App (f,a) =>
           let val body = getLam (show (eval f))
@@ -85,7 +109,8 @@ structure XSOld = struct
               *)
               eval (subst (eval a % sid) body)
           end
-        | e as Lam _ => hide e
+        | e as Lam _ => exp (* used to be (hide e) *)
+        | Const _ => exp
 
   (* evalSub : exp subst -> exp -> exp view
    * evalSubView : exp subst -> exp view -> exp view
@@ -108,6 +133,7 @@ structure XSOld = struct
       end
     (* this call to Exp is annoying. is there a way around it? *)
     | evalSubView s (e as Lam _) = show (Exp (s, e))
+    | evalSubView s (e as Const _) = e
 
   end                           (* local open Util in *)
 end
@@ -126,12 +152,15 @@ structure XS = struct
   datatype exp = Exp of exp subst * term
 
   fun unroll (Term t) = t
-  fun exp t = Exp (sid, t)
   val tvar = Term o Var
   val tlam = Term o Lam
   val tapp = curry (Term o App)
+  val tconst = Term o Const
+  val tint = tconst o Base.Int
+  val tstring = tconst o Base.String
 
-  fun evar i = Exp (sid, tvar i)
+  fun exp t = Exp (sid, t)
+  val evar = exp o tvar
 
   (* op%@ : exp subst * exp subst -> exp subst
    *
@@ -161,6 +190,7 @@ structure XS = struct
       case t of Var v => lookup Var show s v
               | App p => on App (curry Exp s) p
               | Lam t => Lam (Exp (evar 0 % (s %@ up 1), t))
+              | Const c => Const c
 
   (* Evaluation *)
   datatype stuck = Unbound of var
@@ -186,6 +216,7 @@ structure XS = struct
             of Exp (fsub, Term (Lam fbody)) =>
                evalIn (evalIn s a % (fsub %@ up 1)) fbody
              | Exp (_, Term t) => raise Stuck (NotLam t))
+        | Const _ => exp term
 
   end                           (* local open Util in *)
 end
@@ -206,6 +237,7 @@ structure XSV = struct
    * be equal to the number of values preceding it (the length of the subst).
    *)
   datatype value = Closure of value subst * term (* binds *)
+                 | Base of Base.value
 
   (* op%@ : value subst * value subst -> value subst
    *
@@ -226,9 +258,14 @@ structure XSV = struct
        of Lam body => Closure (s, body)
         | Var i => lookup (fn i => raise Stuck (Unbound i)) id s i
         | App (f,a) =>
+          (* FIXME: raise appropriate error if not closure *)
           let val Closure (fenv, fbody) = valueIn s f
           in valueIn (valueIn s a % (fenv %@ up 1)) fbody
           end
+        | Const c => Base c
+
+  val tchurch = church Term
+  val tmult = mult Term
 
   end                           (* local open Util in *)
 end
