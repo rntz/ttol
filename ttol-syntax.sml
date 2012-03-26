@@ -67,7 +67,12 @@ structure Typecheck : TYPECHECK = struct
   val mkTcx : int -> tcx = id
   val mkLcx : int * ifc list -> lcx = id
   fun mkEcx (a,b,c) : ecx = (mkLcx (a,b), c)
-  fun ecxFrom (lcx : lcx) : ecx = (lcx, [])
+
+  fun lcxEcx (lcx : lcx) : ecx = (lcx, [])
+
+  val lcxTcx : lcx -> tcx = #1
+  val ecxLcx : ecx -> lcx = #1
+  val ecxTcx : ecx -> tcx = lcxTcx o ecxLcx
 
   val emptyTcx = mkTcx 0
   val emptyLcx = mkLcx (0, [])
@@ -106,6 +111,9 @@ structure Typecheck : TYPECHECK = struct
     | checkIfc n (IProd is) = on #1 (checkIfc n) is
     | checkIfc n (IUp t) = checkTp n t
 
+  fun inferTp n t = (checkTp n t; t)
+  fun inferIfc n t = (checkIfc n t; t)
+
   (* Inference. *)
   fun inferExp (cx : ecx)
                (imlib : lcx -> 'm -> ifc)
@@ -118,21 +126,44 @@ structure Typecheck : TYPECHECK = struct
       in case l
           of LVar v => lcxIfc cx v
            | LLam (ifc, body) =>
-             IArr (ifc, inferLib (lcxAddLib ifc cx) body)
+             IArr (inferIfc (lcxTcx cx) ifc,
+                   inferLib (lcxAddLib ifc cx) body)
            | LApp (l1,l2) =>
              let val (i1,i2) = case recur l1 of IArr is => is
                                               | _ => raise TypeError
-             in checkLib cx i2 l2; i2
+             in checkLib cx i1 l2; i2
              end
            | LPair ls => on IProd recur ls
            | LProj (p,l) =>
              (case recur l of IProd is => proj p is
                             | _ => raise TypeError)
-           | LCode e => IUp (inferExp (ecxFrom cx) inferLib inferLib e)
+           | LCode e => IUp (inferExp (lcxEcx cx) inferLib inferLib e)
       end
 
   and checkLib cx ifc l =
       raiseUnless TypeError (ifcEq (ifc, inferLib cx l))
+
+  fun inferMlib (cx : lcx) (l : mlib) : ifc =
+      case l
+       of MAtom r => inferRlib cx r
+        | MLam (ifc, body) =>
+          IArr (inferIfc (lcxTcx cx) ifc,
+                inferMlib (lcxAddLib ifc cx) body)
+        | MPair ms => on IProd (inferMlib cx) ms
+        | MCode e => IUp (inferExp (lcxEcx cx) inferMlib inferRlib e)
+
+  and checkMlib cx ifc l =
+      raiseUnless TypeError (ifcEq (ifc, inferMlib cx l))
+
+  and inferRlib (cx : lcx) (RVar v) : ifc = lcxIfc cx v
+    | inferRlib cx (RApp (r,m)) =
+      let val (i1,i2) = case inferRlib cx r of IArr is => is
+                                             | _ => raise TypeError
+      in checkMlib cx i1 m; i2
+      end
+    | inferRlib cx (RProj (p,r)) =
+      (case inferRlib cx r of IProd is => proj p is
+                            | _ => raise TypeError)
 
   end                           (* local opens *)
 end
