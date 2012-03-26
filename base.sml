@@ -3,6 +3,9 @@ structure Base = struct
   exception TypeError
 
   datatype tp = TInt | TString
+  fun tpEq (TInt, TInt) = true
+    | tpEq (TString, TString) = true
+    | tpEq _ = false
 
   datatype value = VInt of int
                  | VString of string

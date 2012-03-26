@@ -39,7 +39,7 @@ structure TTOL = struct
 
   (* libraries *)
   datatype lib = LVar of var
-               | LLam of lib    (* binds lib *)
+               | LLam of ifc * lib (* binds lib *)
                | LApp of lib * lib
                | LPair of lib * lib
                | LProj of proj * lib

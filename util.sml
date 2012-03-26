@@ -8,6 +8,14 @@ structure Util = struct
   fun both f (x,y) = (f x, f y)
   fun on f proj = f o both proj
 
+  fun mapFst f (x,y) = (f x, y)
+  fun mapSnd f (x,y) = (x, f y)
+
+  fun raiseIf e true = raise e
+    | raiseIf _ false = ()
+
+  fun raiseUnless e c = raiseIf e (not c)
+
   fun consif true x xs = x::xs
     | consif false _ xs = xs
 
