@@ -10,6 +10,10 @@ structure Base = struct
   datatype value = VInt of int
                  | VString of string
 
+  (* valueType : value -> tp *)
+  fun valueType (VInt _) = TInt
+    | valueType (VString _) = TString
+
   (* primitive operations *)
   datatype arithop = OpAdd | OpSub | OpMul | OpDiv
 

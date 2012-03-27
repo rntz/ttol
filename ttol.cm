@@ -4,3 +4,5 @@ Group is
       base.sml
       ttol.sml
       ttol-syntax.sml
+      ttol-typecheck.sig
+      ttol-typecheck.sml

@@ -31,11 +31,15 @@ structure TTOL = struct
     | EApp of ('m,'r) exp * ('m,'r) exp
     | EPlam of ('m,'r) exp      (* binds typ *)
     | EPapp of ('m,'r) exp * tp
-    | ERoll of tp * ('m,'r) exp
+    | ERoll of tp * ('m,'r) exp (* binds type in tp *)
     | EUnroll of ('m,'r) exp
+    (* library stuff *)
     | ELoad of ('m,'r) exp * ('m,'r) exp (* binds lib in exp2 *)
     | ELib of 'm
     | EUse of 'r
+    (* base/prim stuff *)
+    | EConst of Base.value
+    | EPrim of Base.prim * ('m,'r) exp list
 
   (* libraries *)
   datatype lib = LVar of var
