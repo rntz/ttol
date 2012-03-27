@@ -133,6 +133,7 @@ structure Typecheck : TYPECHECK = struct
            | LProj (p,l) =>
              (case recur l of IProd is => proj p is
                             | _ => raise TypeError)
+           (* FIXME: need to make sure e is a value! *)
            | LCode e => IUp (inferLExp (lcxEcx cx) e)
       end
 
@@ -149,6 +150,7 @@ structure Typecheck : TYPECHECK = struct
           IArr (inferIfc cx ifc,
                 inferMlib (lcxAddLib ifc cx) body)
         | MPair ms => on IProd (inferMlib cx) ms
+        (* FIXME: need to make sure e is a value! *)
         | MCode e => IUp (inferMRExp (lcxEcx cx) e)
 
   and checkMlib cx ifc l =
