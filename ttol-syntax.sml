@@ -267,6 +267,13 @@ structure Syntax = struct
 
   in
 
+    (* expSubstExp e' e --> [e'/0] e
+     * expSubstTp t e --> [t/0] e
+     *)
+    val expSubstExp = expSub emptycx o Exp
+    val expSubstLib = expSub emptycx o Lib
+    val expSubstTp = expSub emptycx o Tp
+
   end
 
   end                           (* local opens *)
