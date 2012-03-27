@@ -148,5 +148,126 @@ structure Syntax = struct
                          | MCode e => e
                          | _ => raise Malformed)
 
+
+  local
+    (* number of type, lib, and exp binders we are under *)
+    type subcx = { subTps : int, subLibs : int, subExps : int }
+    datatype sub = Tp of tp | Lib of mlib | Exp of expI
+    val emptycx : subcx = { subTps = 0, subLibs = 0, subExps = 0 }
+
+    fun underTp {subTps, subLibs, subExps} =
+        {subTps = subTps + 1, subLibs = subLibs, subExps = subExps}
+    fun underExp {subTps, subLibs, subExps} =
+        {subTps = subTps, subLibs = subLibs, subExps = subExps + 1}
+    fun underLib {subTps, subLibs, subExps} =
+        {subTps = subTps, subLibs = subLibs + 1, subExps = subExps}
+
+    fun varLifter by from which v = if v >= which from then v + which by else v
+
+    fun tpLifter (by : subcx) (from : subcx) t =
+        liftTpFromBy (#subTps from) (#subTps by) t
+
+    fun ifcLifter (by : subcx) (from : subcx) = ifcMapTps (tpLifter by from)
+
+    fun expLifter by from e =
+        let val expLF = expLifter by
+            val expL = expLF from
+            val tpLF = tpLifter by
+            val tpL = tpLF from
+        in case e
+            of EVar v => EVar (varLifter by from #subExps v)
+             | ELam (t,e) => ELam (tpL t, expL e)
+             | EApp es => on EApp expL es
+             | EPlam e => EPlam (expLF (underTp from) e)
+             | EPapp (e,t) => EPapp (expL e, tpL t)
+             | ERoll (t,e) => ERoll (tpLF (underTp from) t, expL e)
+             | EUnroll e => EUnroll (expL e)
+             | ELoad (e1,e2) => ELoad (expL e1, expLF (underLib from) e2)
+             | ELib m => ELib (libLifter by from m)
+             | EUse r => EUse (atomLifter by from r)
+             | e as EConst _ => e
+             | EPrim (p,es) => EPrim (p, map expL es)
+        end
+
+    and libLifter by from m =
+        let val libLF = libLifter by
+            val libL = libLF from
+        in case m
+            of MAtom r => MAtom (atomLifter by from r)
+             | MLam (ifc,body) => MLam (ifcLifter by from ifc,
+                                        libLF (underLib from) body)
+             | MPair ms => on MPair libL ms
+             | MCode e => MCode (expLifter by from e)
+        end
+
+    and atomLifter by from r =
+        let val atomL = atomLifter by from
+        in case r
+            of RVar v => RVar (varLifter by from #subLibs v)
+             | RApp (r,m) => RApp (atomL r, libLifter by from m)
+             | RProj (p,r) => RProj (p, atomL r)
+        end
+
+    fun expLift cx = expLifter cx emptycx
+    fun libLift cx = libLifter cx emptycx
+
+    fun tpSub (cx : subcx) (Tp t') t = substTpFor t' (#subTps cx) t
+      | tpSub _ _ t = t
+
+    fun ifcSub (cx : subcx) (Tp t) i = ifcSubstTpFor t (#subTps cx) i
+      | ifcSub _ _ i = i
+
+    fun varSub cx which lift mkvar v substitutee =
+        case Int.compare (which cx, v)
+         of EQUAL => lift cx substitutee
+          | LESS => mkvar v
+          | GREATER => mkvar (v - 1)
+
+    fun expSub cx (Exp e) (EVar v) = varSub cx #subExps expLift EVar v e
+      | expSub cx _ (e as EVar _) = e
+      | expSub cx s (ELam (t,body)) = ELam (tpSub cx s t,
+                                            expSub (underExp cx) s body)
+      | expSub cx s (EApp es) = on EApp (expSub cx s) es
+      | expSub cx s (EPlam e) = EPlam (expSub (underTp cx) s e)
+      | expSub cx s (EPapp (e,t)) = EPapp (expSub cx s e, tpSub cx s t)
+      | expSub cx s (ERoll (t,e)) = ERoll (tpSub (underTp cx) s t,
+                                           expSub cx s e)
+      | expSub cx s (EUnroll e) = EUnroll (expSub cx s e)
+      | expSub cx s (ELoad (e1,e2)) = ELoad (expSub cx s e1,
+                                             expSub (underLib cx) s e2)
+      | expSub cx s (ELib m) = ELib (libSub cx s m)
+      | expSub cx s (EUse r) = (case atomSub cx s r
+                                 of MAtom r => EUse r
+                                  | MCode e => e
+                                  | _ => raise Malformed)
+      | expSub _ _ (e as EConst _) = e
+      | expSub cx s (EPrim (p,es)) = EPrim (p, map (expSub cx s) es)
+
+    and libSub cx s (MAtom r) : mlib = atomSub cx s r
+      | libSub cx s (MLam (ifc, body)) = MLam (ifcSub cx s ifc,
+                                               libSub (underLib cx) s body)
+      | libSub cx s (MPair ms) = on MPair (libSub cx s) ms
+      | libSub cx s (MCode e) = MCode (expSub cx s e)
+
+    and atomSub cx (Lib m) (RVar v) =
+        varSub cx #subLibs libLift (MAtom o RVar) v m
+      | atomSub cx _ (r as RVar _) = MAtom r
+      | atomSub cx s (RApp (r,m)) =
+        let val m = libSub cx s m
+        in case atomSub cx s r
+            of MAtom r => MAtom (RApp (r,m))
+             | MLam (_, body) => libSub emptycx (Lib m) body
+             | _ => raise Malformed
+        end
+      | atomSub cx s (RProj (p,r)) =
+        (case atomSub cx s r
+          of MAtom r => MAtom (RProj (p,r))
+           | MPair ms => proj p ms
+           | _ => raise Malformed)
+
+  in
+
+  end
+
   end                           (* local opens *)
 end

@@ -1,6 +1,9 @@
 signature IMPL = sig
   val canonLib : TTOL.lib -> TTOL.mlib
   val canonExp : TTOL.expE -> TTOL.expI
+
+  exception Stuck
+  val eval : TTOL.expI -> TTOL.expI
 end
 
 structure Impl : IMPL = struct
@@ -41,6 +44,11 @@ structure Impl : IMPL = struct
          | _ => raise TypeError)
     | canonExp (EConst c) = EConst c
     | canonExp (EPrim (p,es)) = EPrim (p, map canonExp es)
+
+
+  exception Stuck
+
+  fun eval _ = raise Fail "unimplemented"
 
   end                           (* local opens *)
 end
