@@ -21,8 +21,23 @@ structure Syntax = struct
     | ifcEq (IUp t1, IUp t2) = tpEq (t1,t2)
     | ifcEq _ = false
 
-  fun substTp (t : tp) (into : tp) : tp =
-      raise Fail "unimplemented"
+  (* substTpFor t n tau --> [t/n] tau *)
+  fun substTpFor t v (e as TVar v') = (case Int.compare (v,v')
+                                        of EQUAL => t
+                                         | LESS => TVar (v'-1)
+                                         | _ => e)
+    | substTpFor t v (TUniv tau) = TUniv (substTpFor t (v+1) tau)
+    | substTpFor t v (TArr ts) = on TArr (substTpFor t v) ts
+    | substTpFor t v (TRec tau) = TRec (substTpFor t (v+1) tau)
+    | substTpFor t v (TDown ifc) = TDown (ifcSubstTpFor t v ifc)
+    | substTpFor _ _ (b as TBase _) = b
+
+  and ifcSubstTpFor t v (IArr is) = on IArr (ifcSubstTpFor t v) is
+    | ifcSubstTpFor t v (IProd is) = on IProd (ifcSubstTpFor t v) is
+    | ifcSubstTpFor t v (IUp tau) = IUp (substTpFor t v tau)
+
+  (* substTp t tau --> [t/0] tau *)
+  fun substTp t = substTpFor t 0
 
   end                           (* local opens *)
 end
