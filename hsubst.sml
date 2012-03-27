@@ -176,6 +176,7 @@ structure HS = struct
     | canonicalize (EApp p) =
       (case both canonicalize p
         (* FIXME: calling subst1Term with a potentially open term! *)
+        (* Actually, I think this isn't a problem anymore. Should check this. *)
         of (MLam (_, body), arg) => subst1Term (0,arg) body
          | (MAtom r, arg) => MAtom (RApp (r, arg))
          | _ => raise TypeError "impossible")
