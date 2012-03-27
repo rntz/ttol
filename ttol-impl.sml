@@ -17,7 +17,7 @@ structure Impl : IMPL = struct
     | canonLib (LPair ls) = on MPair canonLib ls
     | canonLib (LApp ls) =
       (case both canonLib ls
-        of (MLam (_, body), arg) => mlibSubstMlib0 arg body
+        of (MLam (_, body), arg) => mlibSubstLib arg 0 body
          | (MAtom r, arg) => MAtom (RApp (r, arg))
          | _ => raise TypeError)
     | canonLib (LProj (p,l)) =
