@@ -10,8 +10,6 @@ structure Impl : IMPL = struct
         open Typecheck
   in
 
-  fun mlibSubstMlib0 _ = raise Fail "unimplemented"
-
   fun canonLib (LVar v) : mlib = MAtom (RVar v)
     | canonLib (LLam (ifc, body)) = MLam (ifc, canonLib body)
     | canonLib (LPair ls) = on MPair canonLib ls
