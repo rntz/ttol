@@ -65,9 +65,9 @@ structure Syntax = struct
   (* The int is the number of library variable bindings passed over in the
    * interim (via ELoad).
    *)
-  fun expMapLibs (mlib : int -> 'm1 -> 'm2)
-                 (rlib : int -> 'r1 -> 'r2)
-                 (e : ('m1,'r1) exp) : ('m2,'r2) exp =
+  fun expMapLibUse (lib : int -> 'm1 -> 'm2)
+                   (use : int -> 'r1 -> ('m2, 'r2) exp)
+                   (e : ('m1,'r1) exp) : ('m2,'r2) exp =
       let fun f n (EVar v) = EVar v
             | f n (ELam (t,body)) = ELam (t, f n body)
             | f n (EApp es) = on EApp (f n) es
@@ -76,12 +76,17 @@ structure Syntax = struct
             | f n (ERoll (t, e)) = ERoll (t, f n e)
             | f n (EUnroll e) = EUnroll (f n e)
             | f n (ELoad (e1,e2)) = ELoad (f n e1, f (n+1) e2)
-            | f n (ELib l) = ELib (mlib n l)
-            | f n (EUse r) = EUse (rlib n r)
+            | f n (ELib l) = ELib (lib n l)
+            | f n (EUse r) = use n r
             | f _ (EConst c) = EConst c
             | f n (EPrim (p,es)) = EPrim (p, map (f n) es)
       in f 0 e
       end
+
+  fun expMapLibs (mlib : int -> 'm1 -> 'm2)
+                 (rlib : int -> 'r1 -> 'r2)
+                 : ('m1,'r1) exp -> ('m2,'r2) exp =
+      expMapLibUse mlib (fn i => EUse o rlib i)
 
   fun liftMlibFromBy _ 0 m = m
     | liftMlibFromBy from by m =
@@ -135,7 +140,13 @@ structure Syntax = struct
          | MPair ms => proj p ms
          | _ => raise Malformed)
 
-  and expSubstLib M u e = raise Fail "unimplemented"
+  and expSubstLib M u =
+      expMapLibUse (fn i => mlibSubstLib M (u+i))
+                   (fn i => fn r =>
+                       case rlibSubstLib M (u+i) r
+                        of MAtom r => EUse r
+                         | MCode e => e
+                         | _ => raise Malformed)
 
   end                           (* local opens *)
 end
