@@ -1,0 +1,9 @@
+The processes of linking and loading, while fundamental to the way code is
+actually executed on modern computers, have hitherto evaded type-theoretic
+explanation. This prevents us from producing a typesafe linker and loader, which
+would satisfactorily close the gap between high-level typesafe programming
+languages and low-level typed assembly languages and proof-carrying code. We
+develop such a type theory, by way of defining the syntax and semantics of a
+lambda-calculus with explicit support for libraries. As a proof of concept, we
+implement a compiler from this calculus to a simple abstract machine language
+and associated object-file format, and an interpreter for this machine.
