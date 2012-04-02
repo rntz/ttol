@@ -1,0 +1,38 @@
+* Background
+
+# Expected
+- Inference rules
+- BNF
+
+# Need to explain
+- Modal logic.
+- Adjoint logic.
+- Hereditary substitution.
+
+
+* Story
+
+- Motivation: Talk about ConcertOS, TAL, bridging the typing gap.
+
+- Note first that we're not handling circular library dependencies.
+
+- Libraries are like code with named holes in it (dependencies). Hrm, that looks
+  a lot a function! (Note re this view requires noncircularity.)
+
+- Intro modal logic. Initial thought was extension to modal logic. Note re modal
+  logic and mobility, confirm suspicions.
+
+- Adjoint logic: lets us put things in the upper layer.
+
+  Lets us express "superstructure" of necessary/mobile things beyond ordinary
+  terms.
+
+- Polymorphism. Are type variables necessary or contingent?
+
+- Note regarding suspensions versus values, why we chose values, how this breaks
+  exact correspondence with modal logic.
+
+- Initial lambda-calculus.
+
+- Story re partial evaluation.
+- Story re canonical/atomic forms.
