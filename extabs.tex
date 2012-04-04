@@ -6,20 +6,27 @@
 \usepackage{array}
 \usepackage{color}
 \usepackage{enumerate}
-\usepackage{latexsym}           %for \leadsto
+\usepackage{latexsym}           %for \Box
+\usepackage{multicol}
 \usepackage{url}
 
-\newcommand{\bscolor}{red}
+\usepackage{proof}
+\usepackage{notation}
+
+\newcommand{\bscolor}{blue}
 \newcommand{\bs}[1]{\textcolor{\bscolor}{#1}}
 
-\title{A Type Theory for Linking\\{\large (extended abstract)}}
-\author{Michael Arntzenius}
+\newcommand{\todo}[1]{\textcolor{red}{\small TODO: #1}}
 
+\title{A Type Theory for Linking\\{\large (extended abstract)}}
+\author{Michael Arntzenius\\advised by Karl Crary}
+
+
 \begin{document}
 
 \maketitle
 
-{\small NB. Parts of this paper which are as yet unproven and/or unimplemented
+{\small Parts of this paper which are as yet unproven and/or unimplemented
   are in \bs{\bscolor}.}
 
 % TODO: abstract goes here.
@@ -30,9 +37,10 @@ This paper is written assuming a working knowledge of the basics of programming
 language syntax and semantics. Backus-Naur Form (BNF) is used to define grammars
 and natural-deduction style inference rules are used to define logical
 judgments. Familiarity with typed $\lambda$-calculi, in particular features such
-as product, universal, and recursive types, is assumed. Other concepts, such as
-modal logic, adjoint logic, and hereditary substitution, are explained briefly
-before their use. Prior knowledge of these is not necessary.
+as product, universal, and recursive types, is assumed. The Curry-Howard
+correspondence is employed without remark throughout. Other concepts, such as
+modal logic, the adjoint calculus, and hereditary substitution, are explained
+before use. Prior knowledge of these is not necessary.
 
 % FIXME: Note re understanding linking & loading.
 
@@ -48,14 +56,364 @@ before their use. Prior knowledge of these is not necessary.
 
 \section{Motivation}
 
+Most formal literature on programming languages accounts for three processes:
+parsing, typechecking and execution. Even the ubiquitous process of compilation
+generally takes us outside the formal realm; the target language is typically
+untyped, and arguing that compilation preserves the source language semantics is
+done informally if at all. Fortunately, there is active research in this area,
+in the form of verified compilers, typesafe assembly languages, and
+proof-carrying code. However, there are two processes almost as ubiquitous as
+compilation that have been mostly ignored by formal efforts: linking and
+loading.
+
+We produce the \llib{}-calculus, showing how a typed language with explicit
+support for linking and loading may be formalized and implemented. Aside from
+the straightforward goal of filling a gap in our formal understanding of
+computation, we were particularly motivated by the need of ConcertOS, a project
+to build a typesafe operating system, for a model of linking and loading. The
+content of this work is, however, not specific to ConcertOS.
+
+% TODO: more stuff.
+
+% TODO: citations? refer to typed modular assembly stuff?
+
+% Our model of static versus dynamic linking versus dynamic loading:
+% static linking program P against lib A:
+% - write P as lib with dep on lib A
+% - run small program that loads P, loads A, links them (lib(P A)),
+%   and writes the resulting no-deps library P' out to disk.
+% - P' is our program.
+%
+% dynamic linking program P against lib A:
+% - write P as lib with dep on lib A
+% - write small program that loads P, loads A, links them (lib(P A)),
+%   and runs resulting program.
+%   is this really the correct view of things?
+%
+% dynamic loading:
+% - load u = read("A.so") in P
+
+
 \section{Background}
 
-\section{$\lambda$-calculi}
+\subsection{Modal logic and mobility}
+
+Our first idea was to use some variety of \emph{modal logic} as our typesystem.
+Modal logics are a family of logics which are roughly characterized by dealing
+with the concept of \emph{necessity} (and its dual, \emph{possibility}, which we
+do not consider here). ``Necessity'', itself a slippery concept, is usually
+understood in terms of the notion of ``possible worlds''. In general, a
+proposition may be true in one possible world and false in another. Propositions
+that are true in \emph{all} worlds are called ``necessary''. In contrast,
+``contingent'' truths may only be true in ``our'' world; or at least we only
+\emph{know} they are true in our world.\footnote{This is an extremely rough
+  characterization, and ignores many important varieties of modal logic.}
+
+Modal logics typically add a unary propositional connective expressing that a
+proposition $A$ is ``necessary'', which we write $\nec A$. In Figure
+\ref{fig:modal} we give the syntax and relevant natural-deduction-style
+inference rules for a modal logic in the style of \todo{cite Pfenning \&
+  Davies}. We omit type operators other than $\nec$ and the related terms and
+rules; the usual array of type operators ($\x$, $+$, $\to$, etc.) can be added
+to the system without trouble.
+
+For those unfamiliar with natural-deduction formulations of modal logic, the
+first thing to note is the presence of two contexts $\D$ and $\G$, and
+corresponding classes of variable $u$ and $x$. $\D$ holds ``necessary''
+hypotheses, $\G$ ``contingent'' ones. As such, when proving $\nec A$ via
+$\nec$-Intro, we keep the context $\D$ of hypotheses true in all possible
+worlds, but discard the context $\G$ of hypotheses true perhaps only in our
+world. \todo{Explain $\nec$-Elim, hyp rules.}
+
+\begin{figure}
+  \begin{description}
+  \item[Syntax:]
+    \[\begin{array}{rcl}
+      \D &::=& \ecx ~|~ \D, u \of A\\
+      \G &::=& \ecx ~|~ \G, x \of A\\
+      A &::=& \nec A ~|~ ...\\
+      M &::=& x ~|~ u ~|~ \ebox{M} ~|~ \letbox{u}{M}{M} ~|~ ...\\
+    \end{array}\]
+
+  \item[Judgments:]\ $\D; \G \ent M \isa A$
+
+  \item[Rules:]
+    \[
+    \infer[\text{hyp}_1]{\D;\G, x \of A, \G' \ent x \isa A}{} \qquad
+    \infer[\text{hyp}_2]{\D, u \of A, \D'; \G \ent u \isa A}{}
+    \]
+
+    \[
+    \infer[\nec\text{-Intro}]{\D;\G \ent \ebox{M} \isa \nec A}{
+      \D; \ecx \ent M \isa A}
+    \qquad
+    \infer[\nec\text{-Elim}]{\D;\G \ent \letbox{u}{M_1}{M_2} \isa A_2}{
+      \G \ent M_1 \isa \nec A_1 &
+      \D,u \of A_1; \G \ent M_2 \isa A_2}
+    \]
+  \end{description}
+  \label{fig:modal}
+  \caption{Syntax and typing rules of modal logic with necessity}
+\end{figure}
+
+% TODO: clarity.
+\subsubsection{Mobility}
+What suggested modal logic to us was that the $\nec$ operator has been shown to
+model \emph{mobile} types. \todo{cite Tom's thesis} In a distributed
+computation, ``mobile'' code is code that can be run on any node. Modal logic
+models this if we let our ``possible worlds'' be computational nodes; a
+necessary proposition is the type of code that can run on any node.
+
+% Mobility corresponds to modal logic because ``possible worlds'' model nodes at
+% which code can run; a necessary proposition is the type of code that can run
+% on any node.
+
+Libraries are akin to mobile code: libraries are stored on-disk in a format
+portable among and executable on any machine understanding the corresponding
+file format and machine code---at least, as long as each machine can supply the
+library's dependencies. This is the sticking point: modal logic provides no good
+way to represent libraries with dependencies.
+
+\todo{Need story on why $\nec((\nec A_1 \x \nec A_2 \x ... \x \nec A_n) \to \nec
+  B)$ doesn't suffice. Integrate story about why libraries-with-deps ``look
+  like'' functions into this.}
+
+% because: arbitrary runtime code exec between getting the \nec (A_1 ... A_n)
+% and producing \nec B; which disallows "partial" linking against just one A_i.
+
+
+\subsection{The adjoint calculus}
+
+To deal with dependencies, we turn to Benton and Wadler's \emph{adjoint
+  calculus} \todo{cite}. Adjoint calculi are a family of $\lambda$-calculi that
+can be used to ``encode'' both modal logic and other logics such as
+intuitionistic linear logic. Here we concern ourselves only with its relation to
+modal logic. In Figure \ref{fig:adjoint}, we present the relevant syntax and
+rules of the adjoint calculus.
+
+\begin{figure}[h]
+  \begin{description}
+    \item[Syntax:]
+    \[\begin{array}{rclrcl}
+      \D &::=& \ecx ~|~ \D, u \of A^\uparrow &\qquad
+      \G &::=& \ecx ~|~ \G, x \of A^\downarrow \\
+      {A^\uparrow} &::=& \fG A^\downarrow ~|~ ... &\qquad
+      A^\downarrow &::=& \fF A^\uparrow ~|~ ...\\
+      M^\uparrow &::=& u ~|~ \Gbox{M^\downarrow} ~|~ ... &\qquad
+      M^\downarrow &::=& x ~|~ \Fbox{M^\uparrow} ~|~ \Ginv{M^\uparrow}
+      ~|~ \letF{u}{M^\downarrow}{M^\downarrow}
+      ~|~ ...\\
+    \end{array}\]
+  \item[Judgments:]\ $\D \ent M^\uparrow \isa A^\uparrow$ \ and
+    \ $\D;\G \ent M^\downarrow \isa A^\downarrow$
+  \item[Rules:]
+    \[
+    \infer[\fG\text{-Intro}]{\D \ent \Gbox{M^\downarrow} \isa \fG A^\downarrow}{
+      \D;\ecx \ent M^\downarrow \isa A^\downarrow}
+    \qquad
+    \infer[\fG\text{-Elim}]{\D;\G \ent \Ginv{M^\uparrow} \isa A^\downarrow}{
+      \D \ent M^\uparrow \isa \fG A^\downarrow}
+    \]
+    \[
+    \infer[\fF\text{-Intro}]{\D;\G \ent \Fbox{M^\uparrow} \isa \fF A^\uparrow}{
+      \D \ent M^\uparrow \isa A^\uparrow}
+    \qquad
+    \infer[\fF\text{-Elim}]{
+      \D;\G \ent \letF{u}{M_1^\downarrow}{M_2^\downarrow} \isa A_2^\downarrow
+    }{
+      \D;\G \ent M_1^\downarrow \isa \fF A_1^\uparrow &
+      \D,u \of A_1^\uparrow;\G \ent M_2^\downarrow \isa A_2^\downarrow}
+    \]
+  \end{description}
+
+  \caption{Syntax and typing rules of a generic adjoint calculus}
+  \label{fig:adjoint}
+
+\end{figure}
+
+\newcommand{\trans}[1]{\ulcorner\!{#1}\!\urcorner}
+
+Compared to modal logic, the adjoint calculus ``splits'' types $A$ and terms $M$
+into two layers, the ``upper layer'' $A^\uparrow$, $M^\uparrow$ and the ``lower
+layer'' $A^\downarrow$, $M^\downarrow$. The encoding of modal logic into adjoint
+calculus is given in figure \ref{fig:trans}, which defines translations
+$\trans{A} \in A^\downarrow$ and $\trans{M} \in M^\downarrow$. The intuition
+behind the translation is that the upper layer corresponds to ``necessary''
+entities and the lower layer to ``contingent'' ones. In particular, the
+upper-layer typing judgment $\D \ent M^\uparrow \isa A^\uparrow$ does not have a
+context $\G$ of lower-layer hypotheses; this enforces the restriction that
+proofs of necessary propositions cannot depend on contingent hypotheses. The
+$\fG$ and $\fF$ operators can be seen as ``coercions'' between the two layers.
+$\fG$ ``lifts'' the lower, contingent layer into the upper, necessary one, while
+$\fF$ ``drops'' from the necessary into the contingent.
+
+% Whenever we move into the upper layer, we lose our lower-layer context $\G$;
+% so $\fF \fG$ corresponds to $\nec/\ms{box}$ because, although it begins and
+% ends in the lower layer, it goes through the upper layer on the way, forcing
+% us to discard our contingent hypotheses.
+
+% As in modal logic, proofs of necessary propositions cannot depend on
+% contingent hypotheses; hence the upper layer judgment $\D \ent M^\uparrow \isa
+% A^\uparrow$ does not involve a $\G$ context. This restriction is
+
+% The $\fG$ operator ``lifts'' the contingent into the necessary: $\fG$-Intro
+% ``injects'' a lower-layer proof $\D; \ecx \ent M^\downarrow \isa A^\downarrow$
+% into the upper layer, so long as it relies on no lower-layer hypotheses; and
+% $\fG$-Elim lets us use a lifted proof in any lower-layer context. The $\fF$
+% operator, correspondingly, ``drops'' the necessary into the contingent.
+
+\todo{Clearer explanation of modal/adjoint correspondence. Need feedback.}
+
+% Encoding modal logic in the adjoint calculus translates modal types $A$ and
+% terms $M$ into $A^\downarrow$ and $M^\downarrow$, the lower layer of the adjoint
+% calculus. Whatever ordinary, non-modal type operators we had in $A$ ($\times$,
+% $+$, $\to$, etc.) are added to $A^\downarrow$ unchanged. The modal operator
+% $\nec$ is translated $\fF \fG$.
+
+\begin{figure}[h]
+  \centering
+  \begin{tabular}{cc}
+    \(\begin{aligned}
+      \trans{\ecx} &= \ecx\\
+      \trans{\D, u \of A} &= \trans{\D}, u \of \fG \trans{A}\\
+      \trans{\G, x \of A} &= \trans{\G}, x \of \trans{A}\\
+      \trans{\nec A} &= \fF \fG\, \trans{A}
+    \end{aligned}\) &
+    \(\begin{aligned}
+      \trans{x} &= x\\
+      \trans{u} &= \Ginv{u}\\
+      \trans{\ebox{M}} &= \Fbox{\Gbox{\trans{M}}}\\
+      \trans{\letbox{u}{M_1}{M_2}} &= \letF{u}{\trans{M_1}}{\trans{M_2}}
+    \end{aligned}\)
+  \end{tabular}
+  % \[
+  % \infer[\nec\text{-Intro}]{\D;\G \ent \ebox{M} \isa \nec A}{
+  %   \deduce{\D;\ecx \ent M \isa A}{\mathcal{D}}}
+  % \qquad \leadsto \qquad
+  % \infer[\fF\text{-Intro}]{
+  %   \trans{\D};\trans{\G} \ent \Fbox{\Gbox{\trans{M}}} \isa \fF \fG \trans{A}
+  % }{
+  %   \infer[\fG\text{-Intro}]{
+  %     \trans{\D} \ent \Gbox{\trans{M}} \isa \fG \trans{A}
+  %   }{
+  %     \deduce{\trans{\D}; \ecx \ent \trans{M} \isa \trans{A}}{
+  %       {\mathcal{D}'}}
+  %   }}
+  % \qquad \text{(given $D \leadsto D'$)}
+  % \]
+  \caption{Modal logic to adjoint calculus translation}
+  \label{fig:trans}
+\end{figure}
+
+% TALK ABOUT:
+% - relation of modal logic to adjoint calculus
+% - explain adjoint calculus straight up
+% - adjoint calculus lets us add structure to the upper layer.
+%   in particular, functions for dependencies.
+
+\subsubsection{Dependencies as upper-layer functions}
+
+% TODO: phrasing
+% This encoding ``decomposes'' $\nec$ into two operators $\fF$ and $\fG$, but
+% never uses them separately.
+
+The only upper-layer connective \emph{needed} to encode modal logic is $\fG$.
+But having separated the two layers, we are free to add other connectives to
+$A^\uparrow$. It is this additional expressiveness that suits the adjoint
+calculus to our purposes: Libraries are ``mobile'' and therefore belong to the
+upper layer. Upper layer connectives let us express the ``super-structure'' of a
+library, beyond the lower-layer type of the code it contains.
+
+In particular, we can now express dependencies as library-level functions
+\emph{directly}, by adding them to the upper layer:
+\begin{align*}
+  A^\uparrow &::= ... ~|~ A^\uparrow \to A^\uparrow\\
+  M^\uparrow &::= ... ~|~ \lam{u}{A^\uparrow}{M^\uparrow} ~|~ M^\uparrow \ap M^\uparrow
+\end{align*}
+This cleanly separates the library-level computation of linking a library
+against its dependencies from ordinary run-time computation, and so let us
+implement partial linking correctly as desired.
+
+In general, by adding ``library layer'' (ie. upper layer, as opposed to the
+lower or ``term'' layer) connectives, we express that these correspond to the
+structure of the library itself, not the code it contains. For a concrete
+example of this distinction, consider the following C-language header files:
+\begin{center}
+  \begin{tabular}{l|l}
+    \emph{File:} \texttt{A.h} & \emph{File:} \texttt{B.h}\\\hline
+    \begin{minipage}[t]{0.35\linewidth}
+\begin{verbatim}
+int x;
+int y;
+\end{verbatim}
+    \end{minipage} &
+    \begin{minipage}[t]{0.35\linewidth}
+\begin{verbatim}
+struct { int x; int y; } p;
+\end{verbatim}
+    \end{minipage}
+  \end{tabular}
+\end{center}
+A library implementing the interface expressed by \texttt{A.h} will contain two
+labels, each of type \texttt{int}. A library implementing \texttt{B.h} will
+contain one label of type \texttt{struct \{int x; int y;\}} (in other words, a
+pair of \texttt{int}s). In our terminology, the former expresses a library-layer
+pair, and the latter a term-layer pair, and could be expressed by the types
+$(\fG\,\ms{int}) \x (\fG\,\ms{int})$ and $\fG(\ms{int} \x \ms{int})$
+respectively.
+
+\subsubsection{Polymorphism}
+
+\todo{Polymorphism.}
+
+
+\section{$\llib$-calculi}
+
+The $\llib$ calculus is a polymorphic adjoint calculus with functions and
+products at the library layer, and functions, universals, and recursive types at
+the term layer. The term-layer type operators were chosen to make the term layer
+Turing-complete with a minimum of bother, the better to serve as a proof of
+concept.
+
+The syntax is given in Figure \ref{fig:llib}. $L$ stands for library-layer
+terms, or just ``libraries'', and $I$ stands for library-layer types, or
+``interfaces''. $e$ stands for lower-layer terms and $\tau$ for their types. The
+only other notable change in notation is that $\fG A^\downarrow$ becomes
+$\up{\tau}$ and $\fF A^\uparrow$ becomes $\dn{I}$.
+
+\begin{figure}[h]
+  \[\begin{array}{rcl}
+    I &::=& \up{\tau} ~|~ I \to I ~|~ I \x I\\
+    \tau &::=&  \dn{I} ~|~ \tau \to \tau ~|~ \alpha ~|~ \fa{\alpha}{\tau}
+    ~|~ \trec{\alpha}{\tau}\\
+    L &::=& u ~|~ \lam{u}{I}{L} ~|~ L \ap L ~|~ \<L,L\> ~|~ \proj{i}{L}
+    ~|~ \code{e}\\
+    e &::=& x ~|~ \lam{x}{\tau}{e} ~|~ e \ap e
+    ~|~ \Lam{\alpha}{e} ~|~ \Ap{e}{\tau}
+    ~|~ \roll{\alpha}{\tau}{e} ~|~ \unroll{e}\\
+    &~|~& \lib{L} ~|~ \use{L} ~|~ \load{u}{e}{e}
+  \end{array}\]
+  \label{fig:llib}
+  \caption{The $\llib$ calculus}
+\end{figure}
+
+\subsection{Suspensions versus values}
+
+\subsection{Partial linking and canonical forms}
+And the revised version:
+\[\begin{array}{rcl}
+  M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
+  R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
+  e &::=& ... ~|~ \lib{M} ~|~ \use{R}
+\end{array}\]
 
 \section{Extended CAM}
 
 \section{\bs{Implementation}}
 
 \bs{This entire section is speculative.}
+
+
+\section{Bibliography}
 
 \end{document}

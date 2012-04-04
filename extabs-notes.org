@@ -1,18 +1,30 @@
-* Background
+* Stuff.
 
-# Expected
-- Inference rules
-- BNF
+Our first blah was some sort of modal logic. (Brief description of modal logic
+finishing paragraph here. explicitly talk about possible worlds.)
 
-# Need to explain
-- Modal logic.
-- Adjoint logic.
-- Hereditary substitution.
+What suggested modal logic to us was that the box or necessity operator has been
+shown to model mobile types. (stuff on mobility, ref tom's thesis). mobility
+corresponds to modal logic because "possible worlds" model nodes at which code
+can run; a necessary proposition is the type of code that can run on any node.
 
+Libraries are akin to mobile code: libraries are stored on-disk in a format
+portable among and executable on any machine understanding the corresponding
+file format and machine code---at least, as long as they can fulfill the
+library's dependencies. But that turns out to be exactly the problem: modal
+logic gives us no good way to represent libraries with dependencies.
+
+(Explain modal logic here)
+
+* Problems
+
+"Modal logic gives us no good way to represent dependencies."
+
+(What about box(box(A) -> box(B))?)
+
+(let box u = (blah : box(box(A) -> box(B))) in u (blah : box(A)) end)
 
 * Story
-
-- Motivation: Talk about ConcertOS, TAL, bridging the typing gap.
 
 - Note first that we're not handling circular library dependencies.
 

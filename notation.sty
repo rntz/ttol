@@ -1,0 +1,61 @@
+\newcommand{\ms}[1]{\ensuremath{\textsf{#1}}}
+
+\newcommand{\llib}{\ensuremath{\lambda^{\ms{lib}}}}
+
+\newcommand{\binder}[2]{#1 .\: #2}
+\newcommand{\bindtwo}[3]{\binder{#1\,#2}{#3}}
+
+\newcommand{\<}{\left\langle}
+\renewcommand{\>}{\right\rangle}
+
+\newcommand{\fG}{\mathcal{G}}
+\newcommand{\fF}{\mathcal{F}}
+\newcommand{\nec}{\Box}
+
+\newcommand{\ecx}{\cdot}
+\newcommand{\G}{\Gamma}
+\newcommand{\D}{\Delta}
+\newcommand{\ent}{\vdash}
+\newcommand{\isa}{:}
+\newcommand{\of}{\mathop{:}}
+
+\newcommand{\x}{\times}
+\newcommand{\up}[1]{\lceil{#1}\rceil}
+\newcommand{\dn}[1]{\lfloor{#1}\rfloor}
+
+\newcommand{\trec}[2]{\mu \binder{#1}{#2}}
+\newcommand{\fa}[2]{\forall \binder{#1}{#2}}
+% \newcommand{\ute}[2]{\exists \binder{#1}{#2}}
+% \newcommand{\te}[3]{\ute{#1 \of #2}{#3}}
+
+\newcommand{\code}[1]{\ms{code}\:{#1}}
+\newcommand{\at}[1]{\ms{at}\:{#1}}
+
+\newcommand{\ap}{\;}
+\newcommand{\ulam}[2]{\lambda \binder{#1}{#2}}
+\newcommand{\lam}[3]{\ulam{#1 \of #2}{#3}}
+
+\newcommand{\Ap}[2]{#1\hspace{1pt}[#2]}
+\newcommand{\Lam}[2]{\Lambda \binder{#1}{#2}}
+
+\newcommand{\proj}[2]{\pi_{#1} \, #2}
+\newcommand{\projl}[1]{\proj{1}{#1}}
+\newcommand{\projr}[1]{\proj{2}{#1}}
+
+\newcommand{\roll}[3]{\ms{roll}_{\trec{#1}{#2}}\:{#3}}
+\newcommand{\unroll}[1]{\ms{unroll}\:{#1}}
+
+\newcommand{\leter}[4]{\ms{#1}~{#2}={#3}~\ms{in}~{#4}}
+
+\newcommand{\lib}[1]{\ms{lib}\:{#1}}
+\newcommand{\use}[1]{\ms{use}\:{#1}}
+\newcommand{\load}[3]{\leter{let}{\lib{#1}}{#2}{#3}}
+% \newcommand{\load}[3]{\ms{load}~{#1}={#2}~\ms{in}~{#3}}
+
+\newcommand{\ebox}[1]{\ms{box}\:{#1}}
+\newcommand{\letbox}[3]{\leter{let}{\ebox{#1}}{#2}{#3}}
+
+\newcommand{\Ginv}[1]{\fG^{-1}\,{#1}}
+\newcommand{\Gbox}[1]{\fG{#1}}
+\newcommand{\Fbox}[1]{\fF{#1}}
+\newcommand{\letF}[3]{\leter{let}{\Fbox{#1}}{#2}{#3}}
