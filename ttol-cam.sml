@@ -33,7 +33,7 @@ structure Cam = struct
          | IRet
          (* -- New instructions -- *)
          | IConst of Base.value  (* pushes value *)
-         (* calls prim with args from top of stack in rev. order *)
+         (* calls prim with args from top of stack (last arg topmost) *)
          | IPrim of Base.prim
          | ILib of lib           (* pushes eval of lib in curr. lib subst *)
          | IUse of atom          (* pushes eval of atom in curr. lib subst *)
@@ -195,18 +195,19 @@ structure Cam = struct
           of IAccess n => push (access n env)
            | IClose c => push (VClos (c,env))
            | IApply => (case stack
-                         of arg::VClos(c,e)::stk => mkstate c (addVal arg e) stk
+                         of arg::VClos(c,e)::stk =>
+                            mkstate c (addVal arg e) (VFrame (is,env) :: stk)
                           | _ => raise Stuck "invalid IApply")
            | IRet => (List.null is orelse raise Stuck "excess instrs after ret";
-                     case stack
-                      of ret::VFrame(c,e)::stk => mkstate c e (ret::stk)
-                       | _ => raise Stuck "invalid IRet")
+                      case stack
+                       of ret::VFrame(c,e)::stk => mkstate c e (ret::stk)
+                        | _ => raise Stuck "invalid IRet")
            | IConst v => push (VBase v)
            | IPrim p =>
              let val nargs = length (#1 (Base.primType p))
                  fun get (VBase b) = b
                    | get _ = raise Stuck "invalid IPrim: args not of base type"
-                 val (args, stack) = (map get (List.take (stack, nargs)),
+                 val (args, stack) = (map get (rev (List.take (stack, nargs))),
                                       List.drop (stack, nargs))
                      handle Subscript =>
                             raise Stuck "invalid IPrim: stack underflow"
@@ -231,6 +232,13 @@ structure Cam = struct
             *)
            | IFunc (_,c) => push (VClos (c, empty))
       end
+
+  fun runFrom (s as {instrs, env, stack} : state) : state =
+      (case instrs of [] => s | _ => runFrom (step s))
+
+  fun startState instrs : state = {instrs=instrs, env=empty, stack=[]}
+
+  val run = runFrom o startState
 
   end                           (* local open Util in *)
 end

@@ -7,5 +7,7 @@ Group is
       ttol-typecheck.sig
       ttol-typecheck.sml
       ttol-impl.sml
-
+      ttol-trans.sml
       ttol-cam.sml
+
+      test.sml
