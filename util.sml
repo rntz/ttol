@@ -1,4 +1,6 @@
 structure Util = struct
+  datatype ('a,'b) sum = A of 'a | B of 'b
+
   fun id x = x
   fun curry f x y = f (x,y)
   fun uncurry f (x,y) = f x y
