@@ -16,6 +16,10 @@ structure Cam = struct
                 | AProj of proj * atom
                 | AShift of int * atom
 
+       and code = CFunc of block
+                | CLib of lib
+                | CConst of Base.value
+
        and instr =
            (* -- CAM instrs -- *)
            IAccess of int       (* pushes nth env-val *)
@@ -29,7 +33,8 @@ structure Cam = struct
          | IRet
          (* -- New instructions -- *)
          | IConst of Base.value  (* pushes value *)
-         | IPrim of Base.prim    (* pushes prim *)
+         (* calls prim with args from top of stack in rev. order *)
+         | IPrim of Base.prim
          | ILib of lib           (* pushes eval of lib in curr. lib subst *)
          | IUse of atom          (* pushes eval of atom in curr. lib subst *)
          | ILoad                 (* moves top of stack into lib. subst *)
@@ -38,16 +43,10 @@ structure Cam = struct
           *)
          | IFunc of int * block
 
-       and code = CFunc of block
-                | CLib of lib
-                | CConst of Base.value
-                | CPrim of Base.prim
-
   withtype block = instr list
 
   type subst = int * lib list   (* int is terminating shift *)
   datatype value = VBase of Base.value
-                 | VPrim of Base.prim
                  | VClos of block * env
                  | VLib of lib           (* nb. guaranteed closed *)
                  | VFrame of block * env (* return frame *)
@@ -79,7 +78,6 @@ structure Cam = struct
   fun codeInstr k (CFunc f) = IFunc (k, f)
     | codeInstr k (CLib l) = ILib (shiftL k l)
     | codeInstr _ (CConst c) = IConst c
-    | codeInstr _ (CPrim p) = IPrim p
 
   (* TODO: optimization: cons (LAtom (AShift (n, AVar))) (n+1, []) = (n, []).
    * check whether it helps before committing to this optimization.
@@ -148,7 +146,6 @@ structure Cam = struct
   and substCode (s : subst) (CFunc f) = CFunc (substBlock s f)
     | substCode s (CLib l) = CLib (substLib s l)
     | substCode _ (c as CConst _) = c
-    | substCode _ (p as CPrim _) = p
 
   and substBlock _ [] = []
     | substBlock s (ILoad::is) = ILoad :: substBlock (bind s) is
@@ -187,7 +184,6 @@ structure Cam = struct
   fun codeVal (CFunc f) = VClos (f, empty)
     | codeVal (CLib l) = VLib l
     | codeVal (CConst c) = VBase c
-    | codeVal (CPrim p) = VPrim p
 
   (* step : state -> state *)
   fun step (s as {instrs, env, stack} : state) : state =
@@ -206,7 +202,18 @@ structure Cam = struct
                       of ret::VFrame(c,e)::stk => mkstate c e (ret::stk)
                        | _ => raise Stuck "invalid IRet")
            | IConst v => push (VBase v)
-           | IPrim p => push (VPrim p)
+           | IPrim p =>
+             let val nargs = length (#1 (Base.primType p))
+                 fun get (VBase b) = b
+                   | get _ = raise Stuck "invalid IPrim: args not of base type"
+                 val (args, stack) = (map get (List.take (stack, nargs)),
+                                      List.drop (stack, nargs))
+                     handle Subscript =>
+                            raise Stuck "invalid IPrim: stack underflow"
+             in mkstate is env (VBase (Base.primCall p args) :: stack)
+                handle Base.TypeError =>
+                       raise Stuck "invalid IPrim: args of wrong type"
+             end
            | ILib l => push (VLib (substLib subst l))
            | IUse a => (case unshiftL (substAtom subst a)
                          of (k, LCode c) =>
