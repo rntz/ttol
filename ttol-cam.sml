@@ -1,9 +1,6 @@
-(* TODO: signature *)
+(* TODO: signature? *)
 structure Cam = struct
   local open Util in
-
-  datatype proj = datatype TTOL.proj
-  val proj = TTOL.proj
 
   datatype lib = LShift of int * lib
                | LAtom of atom

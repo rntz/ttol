@@ -1,6 +1,10 @@
 structure Util = struct
   datatype ('a,'b) sum = A of 'a | B of 'b
 
+  datatype proj = L | R
+  fun proj L (x,_) = x
+    | proj R (_,y) = y
+
   fun id x = x
   fun curry f x y = f (x,y)
   fun uncurry f (x,y) = f x y
@@ -24,12 +28,12 @@ structure Util = struct
   fun treeFoldList empty leaf node =
       let fun tree _ [] = (empty, [])
             | tree 1 (x::xs) = (leaf x, xs)
-            | tree n L = let val nleft = n div 2
-                             val (left, L) = tree nleft L
-                             val (right, L) = tree (n - nleft) L
-                         in (node (left, right), L)
+            | tree n l = let val nleft = n div 2
+                             val (left, l) = tree nleft l
+                             val (right, l) = tree (n - nleft) l
+                         in (node (left, right), l)
                          end
-      in fn L => let val (t,[]) = tree (length L) L in t end
+      in fn l => let val (t,[]) = tree (length l) l in t end
       end
 
   fun sort cmp =
@@ -44,8 +48,8 @@ structure Util = struct
       end
 
   fun uniq cmp =
-      let fun join (x, L as y::_) =
-              if cmp (x,y) = EQUAL then L else x::L
+      let fun join (x, ys as y::_) =
+              if cmp (x,y) = EQUAL then ys else x::ys
             | join (x, []) = [x]
       in foldr join nil o sort cmp
       end

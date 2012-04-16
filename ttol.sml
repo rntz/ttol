@@ -1,7 +1,5 @@
 structure TTOL = struct
-  datatype proj = L | R
-  fun proj L (x,_) = x
-    | proj R (_,y) = y
+  local open Util in
 
   (* Both type, term, and library variables are DeBruijn indices. They are into
    * separate contexts, however, so eg 3 stands for different variables
@@ -64,4 +62,6 @@ structure TTOL = struct
 
   (* "internal" expressions *)
   withtype expI = (mlib, rlib) exp
+
+  end                           (* local open Util in *)
 end

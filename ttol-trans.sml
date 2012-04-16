@@ -1,12 +1,15 @@
-(* TODO: signature *)
-structure Translate = struct
+signature TRANSLATE = sig
+  val transLib : TTOL.mlib -> Cam.lib
+  val transAtom : TTOL.rlib -> Cam.atom
+  val transFunc : (TTOL.mlib, TTOL.rlib) TTOL.exp -> Cam.block
+  val transProg : (TTOL.mlib, TTOL.rlib) TTOL.exp -> Cam.block
+end
+
+structure Translate : TRANSLATE = struct
   local open Util
         open TTOL
         open Cam
   in
-
-  datatype proj = datatype TTOL.proj
-  val proj = TTOL.proj
 
   fun avar 0 = AVar
     | avar n = AShift (n, AVar)

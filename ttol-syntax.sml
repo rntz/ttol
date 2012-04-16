@@ -1,13 +1,29 @@
-(* signature SYNTAX = sig
- *  (* TODO *)
- * end *)
+local
+    open TTOL
+    open Util
+    fun pairEq eq (x1,x2) (y1,y2) = eq (x1,y1) andalso eq (x2,y2)
+in
 
-structure Syntax = struct
-  local open Util
-        open TTOL
-        fun pairEq eq (x1,x2) (y1,y2) = eq (x1,y1) andalso eq (x2,y2)
-  in
+(* TODO:
+ *
+ * This signature should be documented, and I should actually think about what
+ * interface to present, instead of just giving things the types I happened to
+ * implement.
+ *)
+signature SYNTAX = sig
+  exception Malformed
+  val tpEq : tp * tp -> bool
+  val ifcEq : ifc * ifc -> bool
 
+  val substTp : tp -> tp -> tp
+
+  val mlibSubstLib : mlib -> int -> mlib -> mlib
+  val expSubstExp : expI -> expI -> expI
+  val expSubstTp : tp -> expI -> expI
+  val expSubstLib : mlib -> expI -> expI
+end
+
+structure Syntax : SYNTAX = struct
   exception Malformed
 
   fun tpEq (TVar v1, TVar v2) = v1 = v2
@@ -275,6 +291,7 @@ structure Syntax = struct
     val expSubstTp = expSub emptycx o Tp
 
   end
-
-  end                           (* local opens *)
 end
+
+end                             (* local open blah blah blah *)
+
