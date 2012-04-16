@@ -8,7 +8,10 @@
 typedef uint32_t shift_t;
 typedef int32_t int_t;
 
-typedef enum { LIB_ATOM, LIB_PAIR, LIB_LAMBDA, LIB_CODE, LIB_SHIFT } lib_tag_t;
+typedef enum {
+    LIB_ATOM, LIB_PAIR, LIB_LAMBDA, LIB_SHIFT,
+    LIB_CODE_FUNC, LIB_CODE_LIB, LIB_CODE_INT, LIB_CODE_STRING
+} lib_tag_t;
 typedef struct { lib_tag_t tag; } lib_t;
 
 typedef enum { ATOM_VAR, ATOM_APP, ATOM_PROJ, ATOM_SHIFT } atom_tag_t;
@@ -116,11 +119,14 @@ typedef struct { lib_t link; atom_t *atom; } lib_atom_t;
 typedef struct { lib_t link; lib_t *libs[2]; } lib_pair_t;
 typedef struct { lib_t link; shift_t shift; lib_t *inner; } lib_shift_t;
 typedef struct { lib_t link; lib_t *body; } lib_lambda_t;
+typedef struct { lib_t link; int_t val; } lib_code_int_t;
+typedef struct { lib_t link; char *val; } lib_code_str_t;
+typedef struct { lib_t link; lib_t *val; } lib_code_lib_t;
 
 typedef struct {
     lib_t link;
     /* TODO. */
-} lib_code_t;
+} lib_code_func_t;
 
 /* Atoms */
 typedef struct { atom_t link; shift_t var; } atom_var_t;

@@ -101,6 +101,15 @@ void stack_push_int(stack_t *stack, int_t val) {
     p->data.num = val;
 }
 
+void stack_push_closure(stack_t *stack, ip_t block, env_t env) {
+    closure_t *clos = NEW(closure_t);
+    clos->block = block;
+    clos->env = env;
+    val_t *slot = stack_push(stack);
+    slot->tag = VAL_CLOSURE;
+    slot->data.closure = clos;
+}
+
 
 /* Library manipulation */
 lib_t *shift_lib(lib_t *lib, shift_t shift) {
@@ -227,7 +236,10 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
           return &r->link;
       }
 
-      case LIB_CODE:
+      case LIB_CODE_FUNC:
+      case LIB_CODE_LIB:
+      case LIB_CODE_INT:
+      case LIB_CODE_STRING:
         assert(0 && "unimplemented");
     }
 
@@ -251,6 +263,7 @@ void run(state_t *S) {
 #define STK (&S->stack)
 #define PUSH stack_push(STK)
 #define POP  stack_pop(STK)
+#define SUBST (S->env.libsubst)
 
         switch ((enum op) read_op(IP)) {
           case OP_NOP: break;
@@ -263,14 +276,14 @@ void run(state_t *S) {
           }
 
           case OP_CLOSE: {
-            closure_t *clos = NEW(closure_t);
-            clos->block = read_block(IP);
-            clos->env = S->env;
+              stack_push_closure(STK, read_block(IP), S->env);
+              break;
+          }
 
-            val_t *slot = PUSH;
-            slot->tag = VAL_CLOSURE;
-            slot->data.closure = clos;
-            break;
+          case OP_FUNC: {
+              static env_t empty = { .valenv = NULL, .libsubst = NULL };
+              stack_push_closure(STK, read_block(IP), empty);
+              break;
           }
 
           case OP_APPLY: {
@@ -323,13 +336,60 @@ void run(state_t *S) {
           case OP_LIB: {
               val_t *p = PUSH;
               p->tag = VAL_LIB;
-              p->data.lib = subst(S->env.libsubst, read_lib(IP));
+              p->data.lib = subst(SUBST, read_lib(IP));
               break;
           }
 
-          case OP_USE:
-          case OP_LOAD:
-          case OP_FUNC:
+          case OP_USE: {
+              atom_t *atom = read_atom(IP);
+              lib_t *lib = NULL;
+              bool gotlib = atom_subst(SUBST, atom, &atom, &lib);
+              assert (gotlib && lib);
+              (void) gotlib; /* unused if NDEBUG */
+              val_t *slot = PUSH;
+
+              switch (lib->tag) {
+                case LIB_CODE_FUNC: {
+                    lib_code_func_t *func =
+                        DEOFFSET(lib_code_func_t, link, lib);
+                    (void) func;
+                    assert (0 && "unimplemented");
+                    break;
+                }
+
+                case LIB_CODE_LIB:
+                  slot->tag = VAL_LIB;
+                  slot->data.lib = DEOFFSET(lib_code_lib_t, link, lib)->val;
+                  break;
+
+                case LIB_CODE_INT:
+                  slot->tag = VAL_INT;
+                  slot->data.num = DEOFFSET(lib_code_int_t, link, lib)->val;
+                  break;
+
+                case LIB_CODE_STRING:
+                  slot->tag = VAL_STRING;
+                  slot->data.str = DEOFFSET(lib_code_str_t, link, lib)->val;
+                  break;
+
+                case LIB_ATOM: case LIB_PAIR: case LIB_LAMBDA: case LIB_SHIFT:
+                  assert(0 && "impossible");
+              }
+            break;
+          }
+
+          case OP_LOAD: {
+              val_t vlib = POP;
+              assert (vlib.tag == VAL_LIB);
+              lib_t *lib = vlib.data.lib;
+              subst_t *oldsubst = SUBST;
+              subst_lib_t *subst = NEW(subst_lib_t);
+              subst->link.tag = SUBST_LIB;
+              subst->link.next = oldsubst;
+              subst->lib = lib;
+              SUBST = &subst->link;
+              break;
+          }
 
           case OP_ADD:
           case OP_SUB:
