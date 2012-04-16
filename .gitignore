@@ -5,5 +5,7 @@
 /extabs.pdf
 /extabs.ps
 *.dep
+*.o
 ttol/flags
 ttol/new_flags
+ttol/camlib
