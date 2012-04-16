@@ -1,0 +1,6 @@
+.cm
+*.aux
+*.log
+*.dvi
+/extabs.pdf
+/extabs.ps

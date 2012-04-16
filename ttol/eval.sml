@@ -1,4 +1,4 @@
-signature IMPL = sig
+signature EVAL = sig
   exception Stuck
 
   val canonLib : TTOL.lib -> TTOL.mlib
@@ -7,7 +7,7 @@ signature IMPL = sig
   val eval : TTOL.expI -> TTOL.expI
 end
 
-structure Impl : IMPL = struct
+structure Eval : EVAL = struct
   local open Util
         open TTOL
         open Syntax
