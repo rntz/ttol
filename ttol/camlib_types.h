@@ -112,49 +112,22 @@ typedef struct {
 
 
 /* Libraries */
-typedef struct {
-    lib_t link;
-    atom_t *atom;
-} lib_atom_t;
-
-typedef struct {
-    lib_t link;
-    lib_t *libs[2];
-} lib_pair_t;
+typedef struct { lib_t link; atom_t *atom; } lib_atom_t;
+typedef struct { lib_t link; lib_t *libs[2]; } lib_pair_t;
+typedef struct { lib_t link; shift_t shift; lib_t *inner; } lib_shift_t;
+typedef struct { lib_t link; lib_t *body; } lib_lambda_t;
 
 typedef struct {
     lib_t link;
     /* TODO. */
 } lib_code_t;
 
-typedef struct {
-    lib_t link;
-    shift_t shift;
-    lib_t *inner;
-} lib_shift_t;
-
 /* Atoms */
-typedef struct {
-    atom_t link;
-    shift_t var;
-} atom_var_t;
+typedef struct { atom_t link; shift_t var; } atom_var_t;
+typedef struct { atom_t link; atom_t *func; atom_t *arg; } atom_app_t;
+typedef struct { atom_t link; shift_t shift; atom_t *inner; } atom_shift_t;
 
-typedef struct {
-    atom_t link;
-    atom_t *func;
-    atom_t *arg;
-} atom_app_t;
-
-typedef struct {
-    atom_t link;
-    bool dir;                   /* false = left, true = right */
-    atom_t *inner;
-} atom_proj_t;
-
-typedef struct {
-    atom_t link;
-    shift_t shift;
-    atom_t *inner;
-} atom_shift_t;
+/* for dir, false = left, true = right */
+typedef struct { atom_t link; bool dir; atom_t *inner; } atom_proj_t;
 
 #endif

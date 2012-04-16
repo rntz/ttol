@@ -12,6 +12,8 @@
 
 #define NEW(typ) GC_MALLOC(sizeof(typ))
 
+#define DEOFFSET(typ, mem, ptr) ((typ*)(((char*)(ptr)) - offsetof(typ, mem)))
+
 
 /* Reading things from bytecode stream. */
 #define NEXT(ipp) *((*(ipp))++)
@@ -100,10 +102,144 @@ void stack_push_int(stack_t *stack, int_t val) {
 }
 
 
+/* Library manipulation */
+lib_t *shift_lib(lib_t *lib, shift_t shift) {
+    lib_shift_t *l = NEW(lib_shift_t);
+    l->link.tag = LIB_SHIFT;
+    l->shift = shift;
+    if (lib->tag != LIB_SHIFT)
+        l->inner = lib;
+    else {
+        lib_shift_t *l2 = DEOFFSET(lib_shift_t, link, lib);
+        l->shift += l2->shift;
+        l->inner = l2->inner;
+    }
+    return &l->link;
+}
+
+
 /* Substitution manipulation */
+shift_t subst_get_shift(subst_t *subst) {
+    assert (subst->tag == SUBST_SHIFT);
+    return DEOFFSET(subst_shift_t, link, subst)->shift;
+}
+
+lib_t *subst_get_lib(subst_t *subst) {
+    assert (subst->tag == SUBST_LIB);
+    return DEOFFSET(subst_lib_t, link, subst)->lib;
+}
+
+void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
+    assert (shift);
+
+    shift_t accum = shift;
+    shift_t i = shift;
+    while (orig && i--) {
+        if (orig->tag == SUBST_SHIFT)
+            accum += subst_get_shift(orig);
+        orig = orig->next;
+    }
+
+    s->link.tag = SUBST_SHIFT;
+    s->link.next = orig;
+    s->shift = accum;
+}
+
+/* useful for null-checking. */
+#define OR(x,y) ((x) ? (x) : (y))
+
+/* returns true and sets libp if result is library.
+ * returns false and sets atomp if result is atom.
+ * sets atomp to NULL if result atom is same as input.
+ */
+bool atom_subst(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp) {
+    assert (0 && "unimplemented");
+    (void) subst, (void) atom, (void) atomp, (void) libp;
+}
+
+/* returns NULL if no copy was necessary. */
+lib_t *lib_subst(subst_t *subst, lib_t *lib) {
+    assert (subst);
+
+    switch (lib->tag) {
+      case LIB_ATOM: {
+          atom_t *atom = DEOFFSET(lib_atom_t, link, lib)->atom;
+          lib_t *rlib;
+          if (atom_subst(subst, atom, &atom, &rlib))
+              return rlib;
+          if (!atom)
+              return NULL;
+
+          /* Make new lib wrapping atom. */
+          lib_atom_t *r = NEW(lib_atom_t);
+          r->link.tag = LIB_ATOM;
+          r->atom = atom;
+          return &r->link;
+      }
+
+      case LIB_PAIR: {
+          lib_t **libs = DEOFFSET(lib_pair_t, link, lib)->libs;
+          lib_t *left = lib_subst(subst, libs[0]),
+                *right = lib_subst(subst, libs[1]);
+          if (!left && !right)
+              return NULL;
+
+          /* Make new pair. */
+          lib_pair_t *r = NEW(lib_pair_t);
+          r->link.tag = LIB_PAIR;
+          r->libs[0] = OR(left, libs[0]);
+          r->libs[1] = OR(right, libs[1]);
+          return &r->link;
+      }
+
+      case LIB_SHIFT: {
+          lib_shift_t *l = DEOFFSET(lib_shift_t, link, lib);
+          assert (l->shift && "should never have shift by 0");
+
+          subst_shift_t ss;
+          subst_shift(&ss, l->shift, subst);
+
+          if (!ss.link.next) {
+              if (ss.shift == l->shift) {
+                  /* I think this case should never happen. */
+                  assert(0 && "impossible?");
+                  /* But if it does, this is the way to handle it. */
+                  return NULL;
+              }
+
+              /* We're just doing a shift. */
+              return shift_lib(l->inner, ss.shift);
+          }
+
+          return lib_subst(&ss.link, l->inner);
+      }
+
+      case LIB_LAMBDA: {
+          lib_t *body = DEOFFSET(lib_lambda_t, link, lib)->body;
+          subst_var_t vs = { .tag = SUBST_VAR, .next = subst };
+
+          body = lib_subst(&vs, body);
+          if (!body) return NULL;
+
+          lib_lambda_t *r = NEW(lib_lambda_t);
+          r->link.tag = LIB_LAMBDA;
+          r->body = body;
+          return &r->link;
+      }
+
+      case LIB_CODE:
+        assert(0 && "unimplemented");
+    }
+
+    assert(0 && "unrecognized lib tag");
+}
+
 lib_t *subst(subst_t *subst, lib_t *lib) {
-    assert(0 && "unimplemented");
-    (void) subst, (void) lib;
+    if (!subst)
+        /* Identity. */
+        return lib;
+    lib_t *result = lib_subst(subst, lib);
+    return OR(result, lib);
 }
 
 
@@ -201,6 +337,8 @@ void run(state_t *S) {
           case OP_DIV:
           case OP_CONCAT:
           case OP_PRINT:
+            assert(0 && "unimplemented");
+
           default:
             assert(0 && "unrecognized opcode");
         }
