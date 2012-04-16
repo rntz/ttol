@@ -87,6 +87,7 @@ structure Cam = struct
     | drop k (n, _::xs) = drop (k-1) (n,xs)
 
   (* (s o ^k) in explicit substitution notation *)
+  (* NB. only used by bindLib. *)
   fun shift 0 s = s
     | shift k (n,ls) = (k+n, map (shiftL k) ls)
 
