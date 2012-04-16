@@ -1,7 +1,7 @@
 HEADERS=camlib.h
 SOURCES=camlib.c
 EXES=camlib
-LIBS=slz
+LIBS=slz gc
 
 # libslz.a is default target.
 camlib: camlib.o

@@ -8,7 +8,7 @@ INCLUDE=$(PREFIX)/include
 CC=gcc
 CCLD=$(CC)
 AR=ar
-CFLAGS+= -std=c99 -pedantic -Wall -Wextra -Werror -pipe
+CFLAGS+= -std=c99 -pedantic -Wall -Wextra -Werror -pipe -Wswitch-enum
 CFLAGS+= -O0 -ggdb3
 # LIBS is defined in Makefile
 LDFLAGS+= $(addprefix -l,$(LIBS))
