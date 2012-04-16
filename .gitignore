@@ -4,3 +4,6 @@
 *.dvi
 /extabs.pdf
 /extabs.ps
+*.dep
+ttol/flags
+ttol/new_flags
