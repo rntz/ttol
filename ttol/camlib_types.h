@@ -116,7 +116,7 @@ typedef struct { lib_t link; int_t val; } lib_code_int_t;
 typedef struct { lib_t link; char *val; } lib_code_str_t;
 typedef struct { lib_t link; lib_t *val; } lib_code_lib_t;
 
-enum linkop { LINKOP_LOAD, LINKOP_INSTR, LINKOP_FUNC };
+enum linkop { LINKOP_LOAD, LINKOP_USE, LINKOP_FUNC, LINKOP_OTHER_INSTR };
 
 typedef struct {
     size_t instrs_len;

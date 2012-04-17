@@ -1,3 +1,8 @@
+/* WARNING.
+ *
+ * This code is too long, too untested, and too complicated to be bug-free.
+ */
+
 /* slz is a serialization library. see http://github.com/rntz/slz */
 #include "camlib.h"
 
@@ -146,15 +151,13 @@ lib_t *shift_lib(lib_t *lib, shift_t shift) {
     return &l->link;
 }
 
-lib_t *unshift_lib(lib_t *lib, shift_t *out) {
-    if (lib->tag == LIB_SHIFT) {
-        lib_shift_t *l = DEOFFSET(lib_shift_t, link, lib);
-        *out = l->shift;
-        assert (l->inner->tag != LIB_SHIFT && "no nested lib_shifts");
-        return l->inner;
-    }
-    *out = 0;
-    return lib;
+shift_t unshift_lib(lib_t **libp) {
+    if ((*libp)->tag != LIB_SHIFT)
+        return 0;
+    lib_shift_t *l = DEOFFSET(lib_shift_t, link, *libp);
+    assert (l->inner->tag != LIB_SHIFT && "no nested lib_shifts");
+    *libp = l->inner;
+    return l->shift;
 }
 
 atom_t *shift_atom(atom_t *atom, shift_t shift) {
@@ -255,8 +258,8 @@ bool atom_subst(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp) {
     if (!atom_subst_fast(subst, atom, atomp, libp))
         return false;
 
-    shift_t shift;
-    lib_t *l = unshift_lib(*libp, &shift);
+    lib_t *l = *libp;
+    shift_t shift = unshift_lib(&l);
     if (l->tag != LIB_ATOM)
         return true;
 
@@ -336,10 +339,10 @@ bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
           }
 
           /* inner evaluated to canonical form, in lib */
-          shift_t shift;
-          lib = unshift_lib(lib, &shift);
+          shift_t shift = unshift_lib(&lib);
           assert (lib->tag == LIB_PAIR);
-          *libp = DEOFFSET(lib_pair_t, link, lib)->libs[proj->dir];
+          *libp = shift_lib(
+              DEOFFSET(lib_pair_t, link, lib)->libs[proj->dir], shift);
           return true;
       }
 
@@ -362,8 +365,7 @@ bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
           }
 
           /* func evaluated to canonical form, in funclib */
-          shift_t shift;
-          funclib = unshift_lib(funclib, &shift);
+          shift_t shift = unshift_lib(&funclib);
           assert (funclib->tag == LIB_LAMBDA);
 
           /* `shift - 1' can result in a "negative" shift. This is OK because we
@@ -499,6 +501,7 @@ block_t *block_subst(subst_t *subst, block_t *block) {
 
     while (rlinkop < end) {
         op_t op = read_op(&rlinkop);
+        ip_t wlinkop_old = wlinkop;
         write_op(&wlinkop, op);
 
         switch ((enum linkop) op) {
@@ -509,16 +512,21 @@ block_t *block_subst(subst_t *subst, block_t *block) {
               break;
           }
 
+          case LINKOP_USE:
+            /* Uses don't have a shift, but since they can turn into funcs they
+             * are followed by a slot for one.
+             */
           case LINKOP_FUNC: (void) 0;
             shift_t shift = read_shift(&rlinkop);
 
-          case LINKOP_INSTR: {
+          case LINKOP_OTHER_INSTR: {
               ip_t interp = read_ip(&rlinkop);
               op_t op = read_op(&interp);
               size_t off = interp - block->instrs;
 
               switch (op) {
                 case OP_LIB: {
+                    assert (op == LINKOP_OTHER_INSTR);
                     lib_t *lib = lib_subst(subst, read_lib(&interp));
                     if (!lib)
                         break;
@@ -529,6 +537,7 @@ block_t *block_subst(subst_t *subst, block_t *block) {
                 }
 
                 case OP_CLOSE: {
+                    assert (op == LINKOP_OTHER_INSTR);
                     ip_t clos_ip = read_ip(&interp);
                     block_t *clos_block =
                         block_subst(subst, DEOFFSET(block_t, instrs, clos_ip));
@@ -566,7 +575,51 @@ block_t *block_subst(subst_t *subst, block_t *block) {
                 }
 
                 case OP_USE: {
-                    assert (0 && "unimplemented");
+                    assert (op == LINKOP_USE);
+                    atom_t *atom = read_atom(&interp);
+                    lib_t *lib;
+                    if (!atom_subst(subst, atom, &atom, &lib)) {
+                        if (!atom)
+                            break;
+                        ensure_block_init_from(&res, block);
+                        ip_t wip = res->instrs + off;
+                        write_atom(&wip, atom);
+                        break;
+                    }
+
+                    /* Got a library. Replace the USE (use-code elimination). */
+                    shift_t shift = unshift_lib(&lib);
+                    ensure_block_init_from(&res, block);
+                    /* -1 to make wip point to the USE instruction itself. */
+                    ip_t wip = res->instrs + off - 1;
+
+                    switch (lib->tag) {
+                      case LIB_CODE_FUNC: {
+                          /* need to change linkop from USE to FUNC. */
+                          wlinkop = wlinkop_old;
+                          write_op(&wlinkop, LINKOP_FUNC);
+                          write_shift(&wlinkop, shift);
+
+                          /* write new func instr */
+                          write_op(&wip, OP_FUNC);
+                          block_t *func_block =
+                              DEOFFSET(lib_code_func_t, link, lib)->block;
+                          write_ip(&wip, func_block->instrs);
+                          break;
+                      }
+
+                      case LIB_CODE_LIB:
+                      case LIB_CODE_INT:
+                      case LIB_CODE_STRING:
+                        assert (0 && "unimplemented");
+
+                      case LIB_ATOM: case LIB_PAIR: case LIB_LAMBDA:
+                      case LIB_SHIFT:
+                        assert (0 && "impossible");
+
+                      default: assert (0 && "unrecognized lib tag");
+                    }
+                    break;
                 }
 
                 default:
@@ -715,6 +768,8 @@ val_t run(state_t *S) {
 
                 case LIB_ATOM: case LIB_PAIR: case LIB_LAMBDA: case LIB_SHIFT:
                   assert(0 && "impossible");
+
+                default: assert (0 && "unrecognized lib tag");
               }
             break;
           }

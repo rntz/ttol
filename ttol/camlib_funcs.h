@@ -21,7 +21,7 @@ void write_ip(ip_t *ip, ip_t instrs);
 atom_t *shift_atom(atom_t *atom, shift_t shift);
 
 lib_t *shift_lib(lib_t *lib, shift_t shift);
-lib_t *unshift_lib(lib_t *lib, shift_t *out);
+shift_t unshift_lib(lib_t **libp);
 
 /* Substitutions */
 /* precondition: subst is a subst_shift */
