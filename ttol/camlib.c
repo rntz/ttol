@@ -876,13 +876,23 @@ void state_init(state_t *S, ip_t ip) {
 
 
 /* A simple test. */
+atom_var_t avar_0 = { .link.tag = ATOM_VAR, .var = 0 };
+atom_var_t avar_1 = { .link.tag = ATOM_VAR, .var = 1 };
+lib_atom_t lvar_0 = { .link.tag = LIB_ATOM, .atom = &avar_0.link };
+lib_atom_t lvar_1 = { .link.tag = LIB_ATOM, .atom = &avar_1.link };
+
 /* A library with a literal 7 in it. */
 lib_code_int_t lcode_int_7 = { .link.tag = LIB_CODE_INT, .val = 7 };
 
 /* The identity library. */
-atom_var_t avar_0 = { .link.tag = ATOM_VAR, .var = 0 };
 lib_atom_t llam_id_body = { .link.tag = LIB_ATOM, .atom = &avar_0.link };
 lib_lambda_t llam_id = { .link.tag = LIB_LAMBDA, .body = &llam_id_body.link };
+
+/* Applies 0 to 1. */
+atom_app_t aapp_0_to_1 = { .link.tag = ATOM_APP,
+                           .func = &avar_0.link, .arg = &lvar_1.link };
+atom_app_t aapp_1_to_0 = { .link.tag = ATOM_APP,
+                           .func = &avar_1.link, .arg = &lvar_0.link };
 
 int main(int argc, char **argv)
 {
@@ -894,19 +904,18 @@ int main(int argc, char **argv)
     write_string(&ip, "begin");
     write_op    (&ip, OP_PRINT);
 
-    /* Push the libraries. */
+    /* Push & load the libraries. */
     write_op    (&ip, OP_LIB);
     write_lib   (&ip, &lcode_int_7.link);
+    write_op    (&ip, OP_LOAD); /* 0 = lcode_int_7 */
+
     write_op    (&ip, OP_LIB);
     write_lib   (&ip, &llam_id.link);
+    write_op    (&ip, OP_LOAD); /* 0 = llam_id, 1 = lcode_int_7 */
 
-    /* Load the libraries. */
-    write_op    (&ip, OP_LOAD); /* 0 = llam_id */
-    write_op    (&ip, OP_LOAD); /* 0 = lcode_int_7, 1 = llam_id */
-
-    /* Use lcode_int_7. */
+    /* Apply llam_id to lcode_int_7. */
     write_op    (&ip, OP_USE);
-    write_atom  (&ip, &avar_0.link);
+    write_atom  (&ip, &aapp_0_to_1.link);
 
     /* Return the value. */
     write_op    (&ip, OP_RET);
