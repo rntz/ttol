@@ -1,6 +1,16 @@
 structure T = struct
   open TTOL
 
+  fun eint x = EConst (Base.VInt x)
+
+  (* Test of Syntax. Demonstrates breakage. *)
+  val mlib_foo = MLam (IUp (TBase Base.TInt),
+                       MPair (MAtom (RVar 0), MAtom (RVar 7)))
+  val anexp : expI =
+      ELib (MAtom (RApp (RVar 0, MAtom (RVar 1))))
+
+  val anexpres = Syntax.expSubstLib mlib_foo anexp
+
   (* Direct test of CAM. *)
   open Cam
 
@@ -27,6 +37,11 @@ structure T = struct
               IConst (Base.VInt 7),
               IApply
              ]
+
+  (* Test for substitution. *)
+  val lib_foo = LLam (LPair (LAtom (AVar), LAtom (avar 7)))
+  val ablock = [ ILib (LAtom (AApp (avar 0, LAtom (avar 1)))) ]
+  val ablockres = substBlock (0, [lib_foo]) ablock
 
   (* Test of translation. *)
   val tint = TBase Base.TInt

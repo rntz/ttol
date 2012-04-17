@@ -132,6 +132,7 @@ structure Cam = struct
           of (k, LAtom a) => LAtom (AApp (shiftA k a, l))
            | (k, LLam body) =>
              (* hereditary substitution case *)
+             (* TODO: explain why this should be k, not k+1. *)
              substLib (k,[l]) body
            | _ => raise Stuck "subst into AApp did not yield lambda or atom"
       end

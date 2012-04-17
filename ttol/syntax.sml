@@ -164,6 +164,8 @@ structure Syntax : SYNTAX = struct
                          | MCode e => e
                          | _ => raise Malformed)
 
+  val oldExpSubstLib = expSubstLib
+
 
   local
     (* number of type, lib, and exp binders we are under *)
@@ -236,8 +238,8 @@ structure Syntax : SYNTAX = struct
     fun varSub cx which lift mkvar v substitutee =
         case Int.compare (which cx, v)
          of EQUAL => lift cx substitutee
-          | LESS => mkvar v
-          | GREATER => mkvar (v - 1)
+          | LESS => mkvar (v - 1)
+          | GREATER => mkvar v
 
     fun expSub cx (Exp e) (EVar v) = varSub cx #subExps expLift EVar v e
       | expSub cx _ (e as EVar _) = e
@@ -272,7 +274,9 @@ structure Syntax : SYNTAX = struct
         let val m = libSub cx s m
         in case atomSub cx s r
             of MAtom r => MAtom (RApp (r,m))
-             | MLam (_, body) => libSub emptycx (Lib m) body
+             | MLam (_, body) =>
+               (* hereditary substitution case. *)
+               libSub emptycx (Lib m) body
              | _ => raise Malformed
         end
       | atomSub cx s (RProj (p,r)) =
@@ -291,6 +295,9 @@ structure Syntax : SYNTAX = struct
     val expSubstTp = expSub emptycx o Tp
 
   end
+
+  (* val expSubstLib = fn m => oldExpSubstLib m 0 *)
+
 end
 
 end                             (* local open blah blah blah *)
