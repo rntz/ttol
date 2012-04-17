@@ -876,6 +876,14 @@ void state_init(state_t *S, ip_t ip) {
 
 
 /* A simple test. */
+/* A library with a literal 7 in it. */
+lib_code_int_t lcode_int_7 = { .link.tag = LIB_CODE_INT, .val = 7 };
+
+/* The identity library. */
+atom_var_t avar_0 = { .link.tag = ATOM_VAR, .var = 0 };
+lib_atom_t llam_id_body = { .link.tag = LIB_ATOM, .atom = &avar_0.link };
+lib_lambda_t llam_id = { .link.tag = LIB_LAMBDA, .body = &llam_id_body.link };
+
 int main(int argc, char **argv)
 {
     GC_INIT();
@@ -883,10 +891,24 @@ int main(int argc, char **argv)
     uint8_t instrs[1024];
     ip_t ip = instrs;
     write_op    (&ip, OP_CONST_STRING);
-    write_string(&ip, "testing");
+    write_string(&ip, "begin");
     write_op    (&ip, OP_PRINT);
-    write_op    (&ip, OP_CONST_INT);
-    write_int   (&ip, -1);
+
+    /* Push the libraries. */
+    write_op    (&ip, OP_LIB);
+    write_lib   (&ip, &lcode_int_7.link);
+    write_op    (&ip, OP_LIB);
+    write_lib   (&ip, &llam_id.link);
+
+    /* Load the libraries. */
+    write_op    (&ip, OP_LOAD); /* 0 = llam_id */
+    write_op    (&ip, OP_LOAD); /* 0 = lcode_int_7, 1 = llam_id */
+
+    /* Use lcode_int_7. */
+    write_op    (&ip, OP_USE);
+    write_atom  (&ip, &avar_0.link);
+
+    /* Return the value. */
     write_op    (&ip, OP_RET);
 
     state_t S;
