@@ -141,6 +141,9 @@ void stack_push_closure(stack_t *stack, ip_t instrs, env_t env) {
 
 /* Library manipulation */
 lib_t *shift_lib(lib_t *lib, shift_t shift) {
+    if (!shift)
+        return lib;
+
     lib_shift_t *l = NEW(lib_shift_t);
     l->link.tag = LIB_SHIFT;
     l->shift = shift;
@@ -165,6 +168,9 @@ shift_t unshift_lib(lib_t **libp) {
 }
 
 atom_t *shift_atom(atom_t *atom, shift_t shift) {
+    if (!shift)
+        return atom;
+
     atom_shift_t *a = NEW(atom_shift_t);
     a->link.tag = ATOM_SHIFT;
     a->shift = shift;
