@@ -123,7 +123,34 @@ lib_t *shift_lib(lib_t *lib, shift_t shift) {
         l->shift += l2->shift;
         l->inner = l2->inner;
     }
+    assert (l->inner->tag != LIB_SHIFT);
     return &l->link;
+}
+
+lib_t *unshift_lib(lib_t *lib, shift_t *out) {
+    if (lib->tag == LIB_SHIFT) {
+        lib_shift_t *l = DEOFFSET(lib_shift_t, link, lib);
+        *out = l->shift;
+        assert (l->inner->tag != LIB_SHIFT && "no nested lib_shifts");
+        return l->inner;
+    }
+    *out = 0;
+    return lib;
+}
+
+atom_t *shift_atom(atom_t *atom, shift_t shift) {
+    atom_shift_t *a = NEW(atom_shift_t);
+    a->link.tag = ATOM_SHIFT;
+    a->shift = shift;
+    if (atom->tag != ATOM_SHIFT)
+        a->inner = atom;
+    else {
+        atom_shift_t *a2 = DEOFFSET(atom_shift_t, link, atom);
+        a->shift += a2->shift;
+        a->inner = a2->inner;
+    }
+    assert (a->inner->tag != ATOM_SHIFT);
+    return &a->link;
 }
 
 
@@ -136,6 +163,48 @@ shift_t subst_get_shift(subst_t *subst) {
 lib_t *subst_get_lib(subst_t *subst) {
     assert (subst->tag == SUBST_LIB);
     return DEOFFSET(subst_lib_t, link, subst)->lib;
+}
+
+bool subst_lookup(subst_t *subst, shift_t var, atom_t **atomp, lib_t **libp) {
+    shift_t accum = 0;
+    for (;;) {
+        /* Is this correct? */
+        while (subst && (subst->tag == SUBST_SHIFT)) {
+            accum += DEOFFSET(subst_shift_t, link, subst)->shift;
+            subst = subst->next;
+        }
+
+        if (!var || !subst)
+            break;
+        --var, ++accum, subst = subst->next;
+    }
+
+    if (!subst) {
+        /* Ran off end of substitution (hit terminating "id"). */
+        atom_var_t *v = NEW(atom_var_t);
+        v->link.tag = ATOM_VAR;
+        v->var = var + accum;
+        *atomp = &v->link;
+        return false;
+    }
+
+    switch (subst->tag) {
+      case SUBST_LIB:
+        *libp = shift_lib(DEOFFSET(subst_lib_t, link, subst)->lib, accum);
+        return true;
+
+      case SUBST_VAR: {
+          atom_var_t *v = NEW(atom_var_t);
+          v->link.tag = ATOM_VAR;
+          v->var = accum;
+          *atomp = &v->link;
+          return false;
+      }
+
+      case SUBST_SHIFT:
+        assert(0 && "impossible");
+    }
+    assert (0 && "unrecognized subst tag");
 }
 
 void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
@@ -157,13 +226,146 @@ void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
 /* useful for null-checking. */
 #define OR(x,y) ((x) ? (x) : (y))
 
-/* returns true and sets libp if result is library.
- * returns false and sets atomp if result is atom.
- * sets atomp to NULL if result atom is same as input.
+/* returns true and sets libp if result is library. (guaranteed not to be a
+ * library wrapping an atom, even with an intevening shift.)
+ *
+ * returns false and sets atomp if result is atom. sets atomp to NULL if result
+ * atom is same as input.
  */
 bool atom_subst(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp) {
-    assert (0 && "unimplemented");
+    if (!atom_subst_fast(subst, atom, atomp, libp))
+        return false;
+
+    shift_t shift;
+    lib_t *l = unshift_lib(*libp, &shift);
+    if (l->tag != LIB_ATOM)
+        return true;
+
+    /* Was a wrapped atom. Return it directly. */
+    *atomp = shift_atom(DEOFFSET(lib_atom_t, link, l)->atom, shift);
+    return false;
+}
+
+lib_t *atom_subst_lib(subst_t *subst, atom_t *atom) {
+    lib_t *r;
+    if (atom_subst_fast(subst, atom, &atom, &r))
+        return r;
+    if (!atom)
+        return NULL;
+    lib_atom_t *l = NEW(lib_atom_t);
+    l->link.tag = LIB_ATOM;
+    l->atom = atom;
+    return &l->link;
+}
+
+/* returns true and sets libp if result is library. (might be a library wrapping
+ * an atom.)
+ *
+ * returns false and sets atomp if result is atom. sets atomp to NULL if result
+ * atom is same as input.
+ */
+bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
+{
+    switch (atom->tag) {
+      case ATOM_VAR:
+        return subst_lookup(subst, DEOFFSET(atom_var_t, link, atom)->var,
+                            atomp, libp);
+
+      case ATOM_SHIFT: {
+          atom_shift_t *a = DEOFFSET(atom_shift_t, link, atom);
+          assert (a->shift && "should never have shift by 0");
+          assert (a->inner->tag != ATOM_VAR &&
+                  "should never have atom_var inside atom_shift");
+
+          subst_shift_t ss;
+          subst_shift(&ss, a->shift, subst);
+          if (!ss.link.next) {
+              if (ss.shift == a->shift) {
+                  /* I think this should never happen. */
+                  assert (0 && "impossible");
+                  /* But if it does, here's how to handle it. */
+                  *atomp = NULL;
+                  return false;
+              }
+
+              /* We're just doing a shift. */
+              *atomp = shift_atom(a->inner, ss.shift);
+              return false;
+          }
+
+          return atom_subst_fast(&ss.link, a->inner, atomp, libp);
+      }
+
+      case ATOM_PROJ: {
+          atom_proj_t *proj = DEOFFSET(atom_proj_t, link, atom);
+          lib_t *lib;
+          if (!atom_subst(subst, proj->inner, &atom, &lib)) {
+              if (!atom)
+                  *atomp = NULL;
+              else {
+                  atom_proj_t *r = NEW(atom_proj_t);
+                  r->link.tag = ATOM_PROJ;
+                  r->dir = proj->dir;
+                  r->inner = atom;
+                  *atomp = &r->link;
+              }
+              return false;
+          }
+
+          /* inner evaluated to canonical form, in lib */
+          shift_t shift;
+          lib = unshift_lib(lib, &shift);
+          assert (lib->tag == LIB_PAIR);
+          *libp = DEOFFSET(lib_pair_t, link, lib)->libs[proj->dir];
+          return true;
+      }
+
+      case ATOM_APP: {
+          atom_app_t *app = DEOFFSET(atom_app_t, link, atom);
+          atom_t *funcatom;
+          lib_t *funclib, *arg = lib_subst(subst, app->arg);
+
+          if (!atom_subst(subst, app->func, &funcatom, &funclib)) {
+              if (!funcatom && !arg)
+                  *atomp = NULL;
+              else {
+                  atom_app_t *r = NEW(atom_app_t);
+                  r->link.tag = ATOM_APP;
+                  r->func = OR(funcatom, app->func);
+                  r->arg = OR(arg, app->arg);
+                  *atomp = &r->link;
+              }
+              return false;
+          }
+
+          /* func evaluated to canonical form, in funclib */
+          shift_t shift;
+          funclib = unshift_lib(funclib, &shift);
+          assert (funclib->tag == LIB_LAMBDA);
+
+          /* `shift - 1' can result in a "negative" shift. This is OK because we
+           * are inside a subst_lib_t, so we'll only reach this node if our
+           * shift is >= 1. The reason for the - 1 is that the desired
+           * corresponding explicit substitution is [L . ^shift], and without
+           * the - 1 we'd get [L . ^(shift+1)].
+           */
+          subst_shift_t sshift = {
+              .link = { .tag = SUBST_SHIFT, .next = NULL },
+              .shift = shift - 1 };
+          subst_lib_t slib = {
+              .link = { .tag = SUBST_LIB, .next = &sshift.link },
+              .lib = OR(arg, app->arg) };
+
+          lib_t *body = DEOFFSET(lib_lambda_t, link, funclib)->body;
+          *libp = lib_subst(&slib.link, body);
+          if (!*libp)
+              *libp = body;
+          return true;
+      }
+    }
+
     (void) subst, (void) atom, (void) atomp, (void) libp;
+    assert (0 && "unrecognized atom tag");
 }
 
 /* returns NULL if no copy was necessary. */
@@ -171,20 +373,8 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
     assert (subst);
 
     switch (lib->tag) {
-      case LIB_ATOM: {
-          atom_t *atom = DEOFFSET(lib_atom_t, link, lib)->atom;
-          lib_t *rlib;
-          if (atom_subst(subst, atom, &atom, &rlib))
-              return rlib;
-          if (!atom)
-              return NULL;
-
-          /* Make new lib wrapping atom. */
-          lib_atom_t *r = NEW(lib_atom_t);
-          r->link.tag = LIB_ATOM;
-          r->atom = atom;
-          return &r->link;
-      }
+      case LIB_ATOM:
+        return atom_subst_lib(subst, DEOFFSET(lib_atom_t, link, lib)->atom);
 
       case LIB_PAIR: {
           lib_t **libs = DEOFFSET(lib_pair_t, link, lib)->libs;
@@ -237,10 +427,23 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
       }
 
       case LIB_CODE_FUNC:
-      case LIB_CODE_LIB:
+        assert (0 && "unimplemented");
+
+      case LIB_CODE_LIB: {
+          lib_t *inner =
+              lib_subst(subst, DEOFFSET(lib_code_lib_t, link, lib)->val);
+          if (!inner)
+              return NULL;
+
+          lib_code_lib_t *r = NEW(lib_code_lib_t);
+          r->link.tag = LIB_CODE_LIB;
+          r->val = inner;
+          return &r->link;
+      }
+
       case LIB_CODE_INT:
       case LIB_CODE_STRING:
-        assert(0 && "unimplemented");
+        return NULL;
     }
 
     assert(0 && "unrecognized lib tag");

@@ -130,7 +130,7 @@ typedef struct {
 
 /* Atoms */
 typedef struct { atom_t link; shift_t var; } atom_var_t;
-typedef struct { atom_t link; atom_t *func; atom_t *arg; } atom_app_t;
+typedef struct { atom_t link; atom_t *func; lib_t *arg; } atom_app_t;
 typedef struct { atom_t link; shift_t shift; atom_t *inner; } atom_shift_t;
 
 /* for dir, false = left, true = right */
