@@ -772,8 +772,8 @@ val_t run(state_t *S) {
               atom_t *atom = read_atom(IP);
               lib_t *lib = NULL;
               bool gotlib = atom_subst_fast(SUBST, atom, &atom, &lib);
-              assert (gotlib && lib);
-              (void) gotlib; /* unused if NDEBUG */
+              assert (gotlib && lib); (void) gotlib; /* unused if NDEBUG */
+              shift_t shift = unshift_lib(&lib);
               val_t *slot = PUSH;
 
               switch (lib->tag) {
@@ -789,7 +789,8 @@ val_t run(state_t *S) {
 
                 case LIB_CODE_LIB:
                   slot->tag = VAL_LIB;
-                  slot->data.lib = DEOFFSET(lib_code_lib_t, link, lib)->val;
+                  lib_t *l = DEOFFSET(lib_code_lib_t, link, lib)->val;
+                  slot->data.lib = shift_lib(l, shift);
                   break;
 
                 case LIB_CODE_INT:
