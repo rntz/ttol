@@ -9,8 +9,12 @@ shift_t read_shift(ip_t *ip);
 int_t   read_int(ip_t *ip);
 lib_t  *read_lib(ip_t *ip);
 atom_t *read_atom(ip_t *ip);
-ip_t    read_block(ip_t *ip);
+ip_t    read_ip(ip_t *ip);
 char   *read_string(ip_t *ip);
+
+void write_op(ip_t *ip, op_t op);
+void write_shift(ip_t *ip, shift_t shift);
+void write_ip(ip_t *ip, ip_t instrs);
 
 
 /* Library manipulation */
@@ -33,9 +37,11 @@ bool atom_subst_fast(
     subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp);
 bool atom_subst(
     subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp);
-lib_t *atom_subst_lib(subst_t *subst, atom_t *atom);
 
+block_t *block_subst(subst_t *subst, block_t *block);
+lib_t *atom_subst_lib(subst_t *subst, atom_t *atom);
 lib_t *lib_subst(subst_t *subst, lib_t *lib);
+
 lib_t *subst(subst_t *subst, lib_t *lib);
 
 

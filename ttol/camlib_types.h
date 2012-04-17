@@ -37,15 +37,8 @@ typedef struct {
 
 
 /* We shouldn't actually need tags on values, since the source language is
- * statically typed. But:
- *
- * a. It might help catch bugs in the interpreter itself. This is the big
- *    reason.
- *
- * b. If we ever want a precise gc, they'll be useful. Precise gc can be done
- *    w/o object tags, but it's a PITA.
- *
- * c. This isn't meant to be a /fast/ interpreter.
+ * statically typed. But it might help catch bugs in the interpreter, so we
+ * leave them in.
  */
 typedef enum { VAL_INT, VAL_STRING, VAL_CLOSURE, VAL_LIB, VAL_FRAME } val_tag_t;
 
@@ -123,9 +116,18 @@ typedef struct { lib_t link; int_t val; } lib_code_int_t;
 typedef struct { lib_t link; char *val; } lib_code_str_t;
 typedef struct { lib_t link; lib_t *val; } lib_code_lib_t;
 
+enum linkop { LINKOP_LOAD, LINKOP_INSTR, LINKOP_FUNC };
+
+typedef struct {
+    size_t instrs_len;
+    size_t linkops_len;
+    uint8_t *linkops;
+    op_t instrs[];
+} block_t;
+
 typedef struct {
     lib_t link;
-    /* TODO. */
+    block_t *block;
 } lib_code_func_t;
 
 /* Atoms */

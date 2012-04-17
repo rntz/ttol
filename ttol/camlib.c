@@ -4,11 +4,12 @@
 #include <gc.h>
 #include <slz.h>
 
+#include <alloca.h>
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 #define INIT_STACK_SIZE 1024
 
@@ -16,37 +17,45 @@
 
 #define DEOFFSET(typ, mem, ptr) ((typ*)(((char*)(ptr)) - offsetof(typ, mem)))
 
+#define ALIGN_UPTO(X, ALIGN)                                    \
+    ((X) % (ALIGN) ? (X) + (ALIGN) - ((X) % (ALIGN)) : (X))
+
 
 /* Reading things from bytecode stream. */
 #define NEXT(ipp) *((*(ipp))++)
+op_t read_op(ip_t *ipp) { return NEXT(ipp); }
+void write_op(ip_t *ipp, op_t op) { NEXT(ipp) = op; }
 
-/* NB.We read big-endian. */
-#define READIN(ipp, dest) do {                          \
-        dest = 0;                                       \
-        for (size_t _readnbytes_index = 0;              \
-             _readnbytes_index < sizeof(dest);          \
-             ++_readnbytes_index) {                     \
-            dest = (dest << CHAR_BIT) + NEXT(ipp);      \
-        }                                               \
-    } while (0)
+void read_aligned(ip_t *ipp, char *out, size_t size) {
+    unsigned char *p = *ipp;
+    p = (unsigned char*) ALIGN_UPTO((uintptr_t) p, size);
+    memcpy(out, p, size);
+    *ipp = p + size;
+}
 
-#define READER(name)                            \
-    name##_t read_##name(ip_t *ipp) {           \
-        name##_t val;                           \
-        READIN(ipp, val);                       \
-        return val;                             \
+void write_aligned(ip_t *ipp, char *in, size_t size) {
+    unsigned char *p = *ipp;
+    p = (unsigned char*) ALIGN_UPTO((uintptr_t) p, size);
+    memcpy(p, in, size);
+    *ipp = p + size;
+}
+
+#define READER_WRITER(type, name)                               \
+    type read_##name(ip_t *ipp) {                               \
+        type val;                                               \
+        read_aligned(ipp, (char*)&val, sizeof(type));           \
+        return val;                                             \
+    }                                                           \
+    void write_##name(ip_t *ipp, type val) {                    \
+        write_aligned(ipp, (char*)&val, sizeof(type));          \
     }
 
-op_t read_op(ip_t *ipp) { return NEXT(ipp); }
-
-READER(shift)
-READER(int)
-READER(uintptr)
-
-lib_t  *read_lib(ip_t *ipp) { return (lib_t*) read_uintptr(ipp); }
-atom_t *read_atom(ip_t *ipp) { return (atom_t*) read_uintptr(ipp); }
-ip_t    read_block(ip_t *ipp) { return (ip_t) read_uintptr(ipp); }
-char   *read_string(ip_t *ipp) { return (char*) read_uintptr(ipp); }
+READER_WRITER(shift_t, shift)
+READER_WRITER(int_t, int)
+READER_WRITER(lib_t*, lib)
+READER_WRITER(atom_t*, atom)
+READER_WRITER(ip_t, ip)
+READER_WRITER(char*, string)
 
 
 /* Environment & stack manipulation. */
@@ -83,7 +92,9 @@ val_t stack_pop(stack_t *stack) {
 val_t *stack_push(stack_t *stack) {
     size_t idx = (size_t)(stack->sp - stack->start);
     if (idx == stack->size) {
-        stack->size *= 2;
+        size_t newsize = stack->size * 2;
+        assert (stack->size < newsize);
+        stack->size = newsize;
         stack->start = GC_REALLOC(stack->start, stack->size * sizeof(val_t));
         stack->sp = stack->start + idx;
     }
@@ -274,6 +285,10 @@ lib_t *atom_subst_lib(subst_t *subst, atom_t *atom) {
  */
 bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
 {
+    /* should be avoiding trivial substitutions. */
+    assert (subst);
+    assert (subst->tag != SUBST_SHIFT || subst->next);
+
     switch (atom->tag) {
       case ATOM_VAR:
         return subst_lookup(subst, DEOFFSET(atom_var_t, link, atom)->var,
@@ -290,7 +305,7 @@ bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
           if (!ss.link.next) {
               if (ss.shift == a->shift) {
                   /* I think this should never happen. */
-                  assert (0 && "impossible");
+                  assert (0 && "impossible?");
                   /* But if it does, here's how to handle it. */
                   *atomp = NULL;
                   return false;
@@ -379,6 +394,7 @@ bool atom_subst_fast(subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp)
 /* returns NULL if no copy was necessary. */
 lib_t *lib_subst(subst_t *subst, lib_t *lib) {
     assert (subst);
+    assert (subst->tag != SUBST_SHIFT || subst->next);
 
     switch (lib->tag) {
       case LIB_ATOM:
@@ -409,7 +425,7 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
           if (!ss.link.next) {
               if (ss.shift == l->shift) {
                   /* I think this case should never happen. */
-                  assert(0 && "impossible?");
+                  assert (0 && "impossible?");
                   /* But if it does, this is the way to handle it. */
                   return NULL;
               }
@@ -434,8 +450,17 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
           return &r->link;
       }
 
-      case LIB_CODE_FUNC:
-        assert (0 && "unimplemented");
+      case LIB_CODE_FUNC: {
+          block_t *block =
+              block_subst(subst, DEOFFSET(lib_code_func_t, link, lib)->block);
+          if (!block)
+              return NULL;
+
+          lib_code_func_t *r = NEW(lib_code_func_t);
+          r->link.tag = LIB_CODE_FUNC;
+          r->block = block;
+          return &r->link;
+      }
 
       case LIB_CODE_LIB: {
           lib_t *inner =
@@ -455,6 +480,109 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
     }
 
     assert(0 && "unrecognized lib tag");
+}
+
+void ensure_block_init_from(block_t **outblock, block_t *inblock) {
+    if (*outblock)
+        return;
+    size_t size = sizeof(block_t) + inblock->instrs_len;
+    block_t *b = *outblock = GC_MALLOC(size);
+    b->instrs_len = inblock->instrs_len;
+    memcpy(b->instrs, inblock->instrs, inblock->instrs_len);
+}
+
+block_t *block_subst(subst_t *subst, block_t *block) {
+    block_t *res = NULL;
+    uint8_t *rlinkop = block->linkops;
+    uint8_t *end = rlinkop + block->linkops_len;
+    uint8_t *wlinkop = GC_MALLOC(block->linkops_len);
+
+    while (rlinkop < end) {
+        op_t op = read_op(&rlinkop);
+        write_op(&wlinkop, op);
+
+        switch ((enum linkop) op) {
+          case LINKOP_LOAD: {
+              subst_var_t *sv = alloca(sizeof(subst_var_t));
+              sv->next = subst;
+              subst = sv;
+              break;
+          }
+
+          case LINKOP_FUNC: (void) 0;
+            shift_t shift = read_shift(&rlinkop);
+
+          case LINKOP_INSTR: {
+              ip_t interp = read_ip(&rlinkop);
+              op_t op = read_op(&interp);
+              size_t off = interp - block->instrs;
+
+              switch (op) {
+                case OP_LIB: {
+                    lib_t *lib = lib_subst(subst, read_lib(&interp));
+                    if (!lib)
+                        break;
+                    ensure_block_init_from(&res, block);
+                    ip_t wip = res->instrs + off;
+                    write_lib(&wip, lib);
+                    break;
+                }
+
+                case OP_CLOSE: {
+                    ip_t clos_ip = read_ip(&interp);
+                    block_t *clos_block =
+                        block_subst(subst, DEOFFSET(block_t, instrs, clos_ip));
+                    if (!clos_block)
+                        break;
+                    ensure_block_init_from(&res, block);
+                    ip_t wip = res->instrs + off;
+                    write_ip(&wip, clos_block->instrs);
+                    break;
+                }
+
+                case OP_FUNC: {
+                    assert (op == LINKOP_FUNC);
+                    ip_t func_ip = read_ip(&interp);
+                    block_t *func_block = DEOFFSET(block_t, instrs, func_ip);
+
+                    subst_shift_t ss;
+                    subst_shift(&ss, shift, subst);
+
+                    if (!ss.link.next) {
+                        /* Just a shift. */
+                        write_shift(&wlinkop, ss.shift);
+                        break;
+                    }
+
+                    write_shift(&wlinkop, 0);
+                    func_block = block_subst(&ss.link, func_block);
+                    if (!func_block)
+                        break;
+
+                    ensure_block_init_from(&res, block);
+                    ip_t wip = res->instrs + off;
+                    write_ip(&wip, func_block->instrs);
+                    break;
+                }
+
+                case OP_USE: {
+                    assert (0 && "unimplemented");
+                }
+
+                default:
+                  assert (0 && "invalid op code for linkop");
+              }
+
+              break;
+          }
+
+          default:
+            assert(0 && "unrecognized linkop");
+            (void) wlinkop, (void) block, (void) subst;
+        }
+    }
+
+    assert(0 && "unimplemented");
 }
 
 lib_t *subst(subst_t *subst, lib_t *lib) {
@@ -487,13 +615,13 @@ val_t run(state_t *S) {
           }
 
           case OP_CLOSE: {
-              stack_push_closure(STK, read_block(IP), S->env);
+              stack_push_closure(STK, read_ip(IP), S->env);
               break;
           }
 
           case OP_FUNC: {
               static env_t empty = { .valenv = NULL, .libsubst = NULL };
-              stack_push_closure(STK, read_block(IP), empty);
+              stack_push_closure(STK, read_ip(IP), empty);
               break;
           }
 
@@ -556,7 +684,7 @@ val_t run(state_t *S) {
           case OP_USE: {
               atom_t *atom = read_atom(IP);
               lib_t *lib = NULL;
-              bool gotlib = atom_subst(SUBST, atom, &atom, &lib);
+              bool gotlib = atom_subst_fast(SUBST, atom, &atom, &lib);
               assert (gotlib && lib);
               (void) gotlib; /* unused if NDEBUG */
               val_t *slot = PUSH;
@@ -620,11 +748,13 @@ val_t run(state_t *S) {
               char *y = stack_pop_string(STK);
               char *x = stack_pop_string(STK);
               size_t xlen = strlen(x), ylen = strlen(y);
-              /* NB. GC_MALLOC returns zerod memory. */
-              char *xy = GC_MALLOC(xlen + ylen + 1);
+              /* NB. GC_MALLOC_ATOMIC informs the GC that there will never be
+               * pointers in the allocated region.
+               */
+              char *xy = GC_MALLOC_ATOMIC(xlen + ylen + 1);
               memcpy(xy, x, xlen);
               memcpy(xy + xlen, y, ylen);
-              assert (!xy[xlen+ylen]);
+              xy[xlen+ylen] = '\0';
               assert (strlen(xy) == xlen + ylen);
 
               val_t *slot = PUSH;
@@ -655,24 +785,18 @@ void state_init(state_t *S, ip_t ip) {
 
 
 /* A simple test. */
-#define ENCODE8(x) ((uint8_t)(x))
-#define ENCODE16(x) ENCODE8((x) >> 8), ENCODE8(x)
-#define ENCODE32(x) ENCODE16((x) >> 16), ENCODE16(x)
-#define ENCODE64(x) ENCODE32((x) >> 32), ENCODE32(x)
-
-#define ENCODE_INT(i) ENCODE32((uint32_t)(int_t)(i))
-#define ENCODE_PTR(p) ENCODE64((uintptr_t)p)
-
-char *test_str = "testing";
-
 int main(int argc, char **argv)
 {
-    uint8_t instrs[] = {
-        OP_CONST_STRING, ENCODE_PTR(test_str),
-        OP_PRINT,
-        OP_CONST_INT, ENCODE_INT(-1),
-        OP_RET
-    };
+    GC_INIT();
+
+    uint8_t instrs[1024];
+    ip_t ip = instrs;
+    write_op    (&ip, OP_CONST_STRING);
+    write_string(&ip, "testing");
+    write_op    (&ip, OP_PRINT);
+    write_op    (&ip, OP_CONST_INT);
+    write_int   (&ip, -1);
+    write_op    (&ip, OP_RET);
 
     state_t S;
     state_init(&S, instrs);
