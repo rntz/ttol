@@ -90,7 +90,7 @@ typedef struct {
     subst_t *libsubst;          /* Lib env. */
 } env_t;
 
-struct closure { ip_t block; env_t env; };
+struct closure { ip_t instrs; env_t env; };
 struct frame { ip_t ip; env_t env; };
 
 /* Stack. */

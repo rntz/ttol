@@ -26,6 +26,10 @@
     ((X) % (ALIGN) ? (X) + (ALIGN) - ((X) % (ALIGN)) : (X))
 
 
+/* Miscellany. */
+env_t empty_env = { .valenv = NULL, .libsubst = NULL };
+
+
 /* Reading things from bytecode stream. */
 #define NEXT(ipp) *((*(ipp))++)
 op_t read_op(ip_t *ipp) { return NEXT(ipp); }
@@ -125,9 +129,9 @@ void stack_push_int(stack_t *stack, int_t val) {
     p->data.num = val;
 }
 
-void stack_push_closure(stack_t *stack, ip_t block, env_t env) {
+void stack_push_closure(stack_t *stack, ip_t instrs, env_t env) {
     closure_t *clos = NEW(closure_t);
-    clos->block = block;
+    clos->instrs = instrs;
     clos->env = env;
     val_t *slot = stack_push(stack);
     slot->tag = VAL_CLOSURE;
@@ -497,7 +501,8 @@ block_t *block_subst(subst_t *subst, block_t *block) {
     block_t *res = NULL;
     uint8_t *rlinkop = block->linkops;
     uint8_t *end = rlinkop + block->linkops_len;
-    uint8_t *wlinkop = GC_MALLOC(block->linkops_len);
+    uint8_t *res_linkops = GC_MALLOC(block->linkops_len);
+    uint8_t *wlinkop = res_linkops;
 
     while (rlinkop < end) {
         op_t op = read_op(&rlinkop);
@@ -592,11 +597,12 @@ block_t *block_subst(subst_t *subst, block_t *block) {
                     ensure_block_init_from(&res, block);
                     /* -1 to make wip point to the USE instruction itself. */
                     ip_t wip = res->instrs + off - 1;
+                    /* Need to change linkop from USE to appropriate value. */
+                    wlinkop = wlinkop_old;
 
                     switch (lib->tag) {
                       case LIB_CODE_FUNC: {
-                          /* need to change linkop from USE to FUNC. */
-                          wlinkop = wlinkop_old;
+                          /* change linkop to FUNC. */
                           write_op(&wlinkop, LINKOP_FUNC);
                           write_shift(&wlinkop, shift);
 
@@ -608,10 +614,29 @@ block_t *block_subst(subst_t *subst, block_t *block) {
                           break;
                       }
 
-                      case LIB_CODE_LIB:
+                      case LIB_CODE_LIB: {
+                          /* change linkop to OTHER_INSTR. */
+                          write_op(&wlinkop, LINKOP_OTHER_INSTR);
+
+                          /* write new lib instr */
+                          write_op(&wip, OP_LIB);
+                          lib = DEOFFSET(lib_code_lib_t, link, lib)->val;
+                          write_lib(&wip, shift_lib(lib, shift));
+                          break;
+                      }
+
                       case LIB_CODE_INT:
+                        /* no linkop needed. */
+                        write_op(&wip, OP_CONST_INT);
+                        write_int(&wip,
+                                  DEOFFSET(lib_code_int_t, link, lib)->val);
+                        break;
+
                       case LIB_CODE_STRING:
-                        assert (0 && "unimplemented");
+                        write_op(&wip, OP_CONST_STRING);
+                        write_string(&wip,
+                                     DEOFFSET(lib_code_str_t, link, lib)->val);
+                        break;
 
                       case LIB_ATOM: case LIB_PAIR: case LIB_LAMBDA:
                       case LIB_SHIFT:
@@ -625,7 +650,6 @@ block_t *block_subst(subst_t *subst, block_t *block) {
                 default:
                   assert (0 && "invalid op code for linkop");
               }
-
               break;
           }
 
@@ -635,7 +659,12 @@ block_t *block_subst(subst_t *subst, block_t *block) {
         }
     }
 
-    assert(0 && "unimplemented");
+    if (!res)
+        return NULL;
+
+    res->linkops = res_linkops;
+    res->linkops_len = wlinkop - res_linkops;
+    return res;
 }
 
 lib_t *subst(subst_t *subst, lib_t *lib) {
@@ -673,8 +702,7 @@ val_t run(state_t *S) {
           }
 
           case OP_FUNC: {
-              static env_t empty = { .valenv = NULL, .libsubst = NULL };
-              stack_push_closure(STK, read_ip(IP), empty);
+              stack_push_closure(STK, read_ip(IP), empty_env);
               break;
           }
 
@@ -694,7 +722,7 @@ val_t run(state_t *S) {
 
               /* Jump into closure, pushing arg into env. */
               closure_t *clos = func.data.closure;
-              S->ip = clos->block;
+              S->ip = clos->instrs;
               S->env = clos->env;
               env_push(ENV, arg);
               break;
@@ -744,10 +772,12 @@ val_t run(state_t *S) {
 
               switch (lib->tag) {
                 case LIB_CODE_FUNC: {
-                    lib_code_func_t *func =
-                        DEOFFSET(lib_code_func_t, link, lib);
-                    (void) func;
-                    assert (0 && "unimplemented");
+                    block_t *blk = DEOFFSET(lib_code_func_t, link, lib)->block;
+                    closure_t *clos = NEW(closure_t);
+                    clos->instrs = blk->instrs;
+                    clos->env = empty_env;
+                    slot->tag = VAL_CLOSURE;
+                    slot->data.closure =clos;
                     break;
                 }
 

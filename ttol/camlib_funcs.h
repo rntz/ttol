@@ -3,6 +3,8 @@
 
 #include "camlib_types.h"
 
+env_t empty_env;
+
 /* Reading from bytecode stream */
 op_t    read_op(ip_t *ip);
 shift_t read_shift(ip_t *ip);
