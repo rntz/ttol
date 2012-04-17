@@ -49,6 +49,7 @@ val_t *stack_push(stack_t *stack);
 
 int_t stack_pop_int(stack_t *stack);
 void stack_push_int(stack_t *stack, int_t val);
+char *stack_pop_string(stack_t *stack);
 
 void stack_push_closure(stack_t *stack, ip_t block, env_t env);
 

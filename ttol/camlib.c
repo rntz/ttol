@@ -10,6 +10,8 @@
 #include <string.h>
 #include <limits.h>
 
+#define INIT_STACK_SIZE 1024
+
 #define NEW(typ) GC_MALLOC(sizeof(typ))
 
 #define DEOFFSET(typ, mem, ptr) ((typ*)(((char*)(ptr)) - offsetof(typ, mem)))
@@ -93,6 +95,12 @@ int_t stack_pop_int(stack_t *stack) {
     val_t v = stack_pop(stack);
     assert (v.tag == VAL_INT);
     return v.data.num;
+}
+
+char *stack_pop_string(stack_t *stack) {
+    val_t v = stack_pop(stack);
+    assert (v.tag == VAL_STRING);
+    return v.data.str;
 }
 
 void stack_push_int(stack_t *stack, int_t val) {
@@ -459,7 +467,7 @@ lib_t *subst(subst_t *subst, lib_t *lib) {
 
 
 /* The main loop. */
-void run(state_t *S) {
+val_t run(state_t *S) {
     for (;;) {
 #define IP (&S->ip)
 #define ENV (&S->env)
@@ -512,15 +520,17 @@ void run(state_t *S) {
           }
 
           case OP_RET: {
+              val_t result = POP;
               if (stack_empty(STK))
                   /* End of program. */
-                  return;
+                  return result;
 
               val_t v = POP;
               assert (v.tag == VAL_FRAME);
               frame_t *frame = v.data.frame;
               S->ip = frame->ip;
               S->env = frame->env;
+              *PUSH = result;
               break;
           }
 
@@ -594,13 +604,40 @@ void run(state_t *S) {
               break;
           }
 
-          case OP_ADD:
-          case OP_SUB:
-          case OP_MUL:
-          case OP_DIV:
-          case OP_CONCAT:
-          case OP_PRINT:
-            assert(0 && "unimplemented");
+#define INTOP(OP) {                             \
+                int_t y = stack_pop_int(STK);   \
+                int_t x = stack_pop_int(STK);   \
+                stack_push_int(STK, x OP y);    \
+                break;                          \
+            }
+
+          case OP_ADD: INTOP(+);
+          case OP_SUB: INTOP(-);
+          case OP_MUL: INTOP(*);
+          case OP_DIV: INTOP(/);
+
+          case OP_CONCAT: {
+              char *y = stack_pop_string(STK);
+              char *x = stack_pop_string(STK);
+              size_t xlen = strlen(x), ylen = strlen(y);
+              /* NB. GC_MALLOC returns zerod memory. */
+              char *xy = GC_MALLOC(xlen + ylen + 1);
+              memcpy(xy, x, xlen);
+              memcpy(xy + xlen, y, ylen);
+              assert (!xy[xlen+ylen]);
+              assert (strlen(xy) == xlen + ylen);
+
+              val_t *slot = PUSH;
+              slot->tag = VAL_STRING;
+              slot->data.str = xy;
+              break;
+          }
+
+          case OP_PRINT: {
+              char *s = stack_pop_string(STK);
+              printf("%s\n", s);
+              break;
+          }
 
           default:
             assert(0 && "unrecognized opcode");
@@ -608,9 +645,46 @@ void run(state_t *S) {
     }
 }
 
+void state_init(state_t *S, ip_t ip) {
+    S->ip = ip;
+    S->env.valenv = NULL;
+    S->env.libsubst = NULL;
+    S->stack.size = INIT_STACK_SIZE;
+    S->stack.start = S->stack.sp = GC_MALLOC(S->stack.size * sizeof(val_t));
+}
+
+
+/* A simple test. */
+#define ENCODE8(x) ((uint8_t)(x))
+#define ENCODE16(x) ENCODE8((x) >> 8), ENCODE8(x)
+#define ENCODE32(x) ENCODE16((x) >> 16), ENCODE16(x)
+#define ENCODE64(x) ENCODE32((x) >> 32), ENCODE32(x)
+
+#define ENCODE_INT(i) ENCODE32((uint32_t)(int_t)(i))
+#define ENCODE_PTR(p) ENCODE64((uintptr_t)p)
+
+char *test_str = "testing";
+
 int main(int argc, char **argv)
 {
-    fprintf(stderr, "unimplemented, sorry\n");
+    uint8_t instrs[] = {
+        OP_CONST_STRING, ENCODE_PTR(test_str),
+        OP_PRINT,
+        OP_CONST_INT, ENCODE_INT(-1),
+        OP_RET
+    };
+
+    state_t S;
+    state_init(&S, instrs);
+    val_t res = run(&S);
+
+    if (res.tag == VAL_STRING)
+        printf("returned string: %s\n", res.data.str);
+    else if (res.tag == VAL_INT)
+        printf("returned int: %d\n", res.data.num);
+    else
+        printf("returned unprintable value with tag %d\n", res.tag);
+
     return 0;
     (void) argc, (void) argv;
 }
