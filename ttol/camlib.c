@@ -26,48 +26,9 @@
     ((X) % (ALIGN) ? (X) + (ALIGN) - ((X) % (ALIGN)) : (X))
 
 
-/* Miscellany. */
+/* Environment & stack manipulation. */
 env_t empty_env = { .valenv = NULL, .libsubst = NULL };
 
-
-/* Reading things from bytecode stream. */
-#define NEXT(ipp) *((*(ipp))++)
-op_t read_op(ip_t *ipp) { return NEXT(ipp); }
-void write_op(ip_t *ipp, op_t op) { NEXT(ipp) = op; }
-
-void read_aligned(ip_t *ipp, char *out, size_t size) {
-    unsigned char *p = *ipp;
-    p = (unsigned char*) ALIGN_UPTO((uintptr_t) p, size);
-    memcpy(out, p, size);
-    *ipp = p + size;
-}
-
-void write_aligned(ip_t *ipp, char *in, size_t size) {
-    unsigned char *p = *ipp;
-    p = (unsigned char*) ALIGN_UPTO((uintptr_t) p, size);
-    memcpy(p, in, size);
-    *ipp = p + size;
-}
-
-#define READER_WRITER(type, name)                               \
-    type read_##name(ip_t *ipp) {                               \
-        type val;                                               \
-        read_aligned(ipp, (char*)&val, sizeof(type));           \
-        return val;                                             \
-    }                                                           \
-    void write_##name(ip_t *ipp, type val) {                    \
-        write_aligned(ipp, (char*)&val, sizeof(type));          \
-    }
-
-READER_WRITER(shift_t, shift)
-READER_WRITER(int_t, int)
-READER_WRITER(lib_t*, lib)
-READER_WRITER(atom_t*, atom)
-READER_WRITER(ip_t, ip)
-READER_WRITER(char*, string)
-
-
-/* Environment & stack manipulation. */
 void env_access(env_t *env, shift_t idx, val_t *out) {
     valenv_t *node = env->valenv;
     while (idx--) {
@@ -129,9 +90,9 @@ void stack_push_int(stack_t *stack, int_t val) {
     p->data.num = val;
 }
 
-void stack_push_closure(stack_t *stack, ip_t instrs, env_t env) {
+void stack_push_closure(stack_t *stack, block_t *block, env_t env) {
     closure_t *clos = NEW(closure_t);
-    clos->instrs = instrs;
+    clos->instrs = block->instrs;
     clos->env = env;
     val_t *slot = stack_push(stack);
     slot->tag = VAL_CLOSURE;
@@ -239,8 +200,9 @@ bool subst_lookup(subst_t *subst, shift_t var, atom_t **atomp, lib_t **libp) {
     assert (0 && "unrecognized subst tag");
 }
 
-void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
-    assert (shift);
+subst_t *subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
+    if (!shift)
+        return orig;
 
     shift_t accum = shift;
     shift_t i = shift;
@@ -253,6 +215,7 @@ void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig) {
     s->link.tag = SUBST_SHIFT;
     s->link.next = orig;
     s->shift = accum;
+    return &s->link;
 }
 
 /* useful for null-checking. */
@@ -494,28 +457,22 @@ lib_t *lib_subst(subst_t *subst, lib_t *lib) {
     assert(0 && "unrecognized lib tag");
 }
 
-void ensure_block_init_from(block_t **outblock, block_t *inblock) {
-    if (*outblock)
-        return;
-    size_t size = sizeof(block_t) + inblock->instrs_len;
-    block_t *b = *outblock = GC_MALLOC(size);
-    b->instrs_len = inblock->instrs_len;
-    memcpy(b->instrs, inblock->instrs, inblock->instrs_len);
-}
-
 block_t *block_subst(subst_t *subst, block_t *block) {
-    block_t *res = NULL;
-    uint8_t *rlinkop = block->linkops;
-    uint8_t *end = rlinkop + block->linkops_len;
-    uint8_t *res_linkops = GC_MALLOC(block->linkops_len);
-    uint8_t *wlinkop = res_linkops;
+    block_t *res = GC_MALLOC(sizeof(block_t) +
+                             block->num_instrs * sizeof(instr_t));
+    res->num_instrs = block->num_instrs;
+    memcpy(res->instrs, block->instrs, sizeof(instr_t) * block->num_instrs);
 
-    while (rlinkop < end) {
-        op_t op = read_op(&rlinkop);
-        ip_t wlinkop_old = wlinkop;
-        write_op(&wlinkop, op);
+    size_t nlis = res->num_linkinstrs = block->num_linkinstrs;
+    linkinstr_t *lis = block->linkinstrs;
+    linkinstr_t *rlis = res->linkinstrs = GC_MALLOC(sizeof(linkinstr_t) * nlis);
+    memcpy(rlis, lis, sizeof(linkinstr_t) * nlis);
 
-        switch ((enum linkop) op) {
+    for (size_t lino = 0; lino < nlis; ++lino) {
+        linkinstr_t li = lis[lino];
+        linkinstr_t *rli = &rlis[lino];
+
+        switch ((enum linkop) li.op) {
           case LINKOP_LOAD: {
               subst_var_t *sv = alloca(sizeof(subst_var_t));
               sv->next = subst;
@@ -523,125 +480,86 @@ block_t *block_subst(subst_t *subst, block_t *block) {
               break;
           }
 
-          case LINKOP_USE:
-            /* Uses don't have a shift, but since they can turn into funcs they
-             * are followed by a slot for one.
-             */
-          case LINKOP_FUNC: (void) 0;
-            shift_t shift = read_shift(&rlinkop);
+          case LINKOP_NOP: break;
 
-          case LINKOP_OTHER_INSTR: {
-              ip_t interp = read_ip(&rlinkop);
-              op_t op = read_op(&interp);
-              size_t off = interp - block->instrs;
+          case LINKOP_INSTR: {
+              instr_t ins = block->instrs[li.offset];
+              instr_t *rins = &res->instrs[li.offset];
 
-              switch (op) {
+              switch (ins.op) {
                 case OP_LIB: {
-                    assert (op == LINKOP_OTHER_INSTR);
-                    lib_t *lib = lib_subst(subst, read_lib(&interp));
-                    if (!lib)
-                        break;
-                    ensure_block_init_from(&res, block);
-                    ip_t wip = res->instrs + off;
-                    write_lib(&wip, lib);
+                    lib_t *lib = lib_subst(subst, ins.arg.lib);
+                    if (lib)
+                        rins->arg.lib = lib;
                     break;
                 }
 
                 case OP_CLOSE: {
-                    assert (op == LINKOP_OTHER_INSTR);
-                    ip_t clos_ip = read_ip(&interp);
-                    block_t *clos_block =
-                        block_subst(subst, DEOFFSET(block_t, instrs, clos_ip));
-                    if (!clos_block)
-                        break;
-                    ensure_block_init_from(&res, block);
-                    ip_t wip = res->instrs + off;
-                    write_ip(&wip, clos_block->instrs);
+                    block_t *clos_block = block_subst(subst, ins.arg.block);
+                    if (clos_block)
+                        rins->arg.block = clos_block;
                     break;
                 }
 
                 case OP_FUNC: {
-                    assert (op == LINKOP_FUNC);
-                    ip_t func_ip = read_ip(&interp);
-                    block_t *func_block = DEOFFSET(block_t, instrs, func_ip);
-
                     subst_shift_t ss;
-                    subst_shift(&ss, shift, subst);
+                    subst_t *s = subst_shift(&ss, li.shift, subst);
 
-                    if (!ss.link.next) {
+                    if (!s->next && s->tag == SUBST_SHIFT) {
                         /* Just a shift. */
-                        write_shift(&wlinkop, ss.shift);
+                        rli->shift = subst_get_shift(s);
                         break;
                     }
 
-                    write_shift(&wlinkop, 0);
-                    func_block = block_subst(&ss.link, func_block);
-                    if (!func_block)
-                        break;
-
-                    ensure_block_init_from(&res, block);
-                    ip_t wip = res->instrs + off;
-                    write_ip(&wip, func_block->instrs);
+                    /* Adjust shift. */
+                    rli->shift = 0;
+                    block_t *blk = block_subst(s, ins.arg.block);
+                    if (blk)
+                        rins->arg.block = blk;
                     break;
                 }
 
                 case OP_USE: {
-                    assert (op == LINKOP_USE);
-                    atom_t *atom = read_atom(&interp);
+                    atom_t *atom;
                     lib_t *lib;
-                    if (!atom_subst(subst, atom, &atom, &lib)) {
-                        if (!atom)
-                            break;
-                        ensure_block_init_from(&res, block);
-                        ip_t wip = res->instrs + off;
-                        write_atom(&wip, atom);
+                    if (!atom_subst(subst, ins.arg.atom, &atom, &lib)) {
+                        if (atom)
+                            rins->arg.atom = atom;
                         break;
                     }
 
                     /* Got a library. Replace the USE (use-code elimination). */
                     shift_t shift = unshift_lib(&lib);
-                    ensure_block_init_from(&res, block);
-                    /* -1 to make wip point to the USE instruction itself. */
-                    ip_t wip = res->instrs + off - 1;
-                    /* Need to change linkop from USE to appropriate value. */
-                    wlinkop = wlinkop_old;
-
                     switch (lib->tag) {
-                      case LIB_CODE_FUNC: {
-                          /* change linkop to FUNC. */
-                          write_op(&wlinkop, LINKOP_FUNC);
-                          write_shift(&wlinkop, shift);
+                      case LIB_CODE_FUNC:
+                        /* write func instr & update link instr */
+                        rins->op = OP_FUNC;
+                        rins->arg.block =
+                            DEOFFSET(lib_code_func_t, link, lib)->block;
+                        rli->shift = shift;
+                        break;
 
-                          /* write new func instr */
-                          write_op(&wip, OP_FUNC);
-                          block_t *func_block =
-                              DEOFFSET(lib_code_func_t, link, lib)->block;
-                          write_ip(&wip, func_block->instrs);
-                          break;
-                      }
-
-                      case LIB_CODE_LIB: {
-                          /* change linkop to OTHER_INSTR. */
-                          write_op(&wlinkop, LINKOP_OTHER_INSTR);
-
-                          /* write new lib instr */
-                          write_op(&wip, OP_LIB);
-                          lib = DEOFFSET(lib_code_lib_t, link, lib)->val;
-                          write_lib(&wip, shift_lib(lib, shift));
-                          break;
-                      }
+                      case LIB_CODE_LIB:
+                        /* write lib instr */
+                        rins->op = OP_LIB;
+                        rins->arg.lib =
+                            DEOFFSET(lib_code_lib_t, link, lib)->val;
+                        break;
 
                       case LIB_CODE_INT:
-                        /* no linkop needed. */
-                        write_op(&wip, OP_CONST_INT);
-                        write_int(&wip,
-                                  DEOFFSET(lib_code_int_t, link, lib)->val);
+                        /* write int instr. */
+                        rins->op = OP_CONST_INT;
+                        rins->arg.num =
+                            DEOFFSET(lib_code_int_t, link, lib)->val;
+                        /* change linkop to NOP. */
+                        rli->op = LINKOP_NOP;
                         break;
 
                       case LIB_CODE_STRING:
-                        write_op(&wip, OP_CONST_STRING);
-                        write_string(&wip,
-                                     DEOFFSET(lib_code_str_t, link, lib)->val);
+                        rins->op = OP_CONST_STRING;
+                        rins->arg.str =
+                            DEOFFSET(lib_code_str_t, link, lib)->val;
+                        rli->op = LINKOP_NOP;
                         break;
 
                       case LIB_ATOM: case LIB_PAIR: case LIB_LAMBDA:
@@ -661,15 +579,9 @@ block_t *block_subst(subst_t *subst, block_t *block) {
 
           default:
             assert(0 && "unrecognized linkop");
-            (void) wlinkop, (void) block, (void) subst;
         }
     }
 
-    if (!res)
-        return NULL;
-
-    res->linkops = res_linkops;
-    res->linkops_len = wlinkop - res_linkops;
     return res;
 }
 
@@ -685,30 +597,27 @@ lib_t *subst(subst_t *subst, lib_t *lib) {
 /* The main loop. */
 val_t run(state_t *S) {
     for (;;) {
-#define IP (&S->ip)
 #define ENV (&S->env)
 #define STK (&S->stack)
 #define PUSH stack_push(STK)
 #define POP  stack_pop(STK)
 #define SUBST (S->env.libsubst)
 
-        switch ((enum op) read_op(IP)) {
-          case OP_NOP: break;
-
+        instr_t ins = *(S->ip++);
+        switch ((enum op) ins.op) {
           case OP_ACCESS: {
-            shift_t idx = read_shift(IP);
-            val_t *slot = PUSH;
-            env_access(ENV, idx, slot);
-            break;
+              val_t *slot = PUSH;
+              env_access(ENV, ins.arg.shift, slot);
+              break;
           }
 
           case OP_CLOSE: {
-              stack_push_closure(STK, read_ip(IP), S->env);
+              stack_push_closure(STK, ins.arg.block, S->env);
               break;
           }
 
           case OP_FUNC: {
-              stack_push_closure(STK, read_ip(IP), empty_env);
+              stack_push_closure(STK, ins.arg.block, empty_env);
               break;
           }
 
@@ -750,28 +659,28 @@ val_t run(state_t *S) {
           }
 
           case OP_CONST_INT: {
-              stack_push_int(STK, read_int(IP));
+              stack_push_int(STK, ins.arg.num);
               break;
           }
 
           case OP_CONST_STRING: {
               val_t *p = PUSH;
               p->tag = VAL_STRING;
-              p->data.str = read_string(IP);
+              p->data.str = ins.arg.str;
               break;
           }
 
           case OP_LIB: {
               val_t *p = PUSH;
               p->tag = VAL_LIB;
-              p->data.lib = subst(SUBST, read_lib(IP));
+              p->data.lib = subst(SUBST, ins.arg.lib);
               break;
           }
 
           case OP_USE: {
-              atom_t *atom = read_atom(IP);
+              atom_t *atom;
               lib_t *lib = NULL;
-              bool gotlib = atom_subst_fast(SUBST, atom, &atom, &lib);
+              bool gotlib = atom_subst_fast(SUBST, ins.arg.atom, &atom, &lib);
               assert (gotlib && lib); (void) gotlib; /* unused if NDEBUG */
               shift_t shift = unshift_lib(&lib);
               val_t *slot = PUSH;
@@ -882,6 +791,12 @@ atom_var_t avar_1 = { .link.tag = ATOM_VAR, .var = 1 };
 lib_atom_t lvar_0 = { .link.tag = LIB_ATOM, .atom = &avar_0.link };
 lib_atom_t lvar_1 = { .link.tag = LIB_ATOM, .atom = &avar_1.link };
 
+/* Applies 0 to 1. */
+atom_app_t aapp_0_to_1 = { .link.tag = ATOM_APP,
+                           .func = &avar_0.link, .arg = &lvar_1.link };
+atom_app_t aapp_1_to_0 = { .link.tag = ATOM_APP,
+                           .func = &avar_1.link, .arg = &lvar_0.link };
+
 /* A library with a literal 7 in it. */
 lib_code_int_t lcode_int_7 = { .link.tag = LIB_CODE_INT, .val = 7 };
 
@@ -889,37 +804,75 @@ lib_code_int_t lcode_int_7 = { .link.tag = LIB_CODE_INT, .val = 7 };
 lib_atom_t llam_id_body = { .link.tag = LIB_ATOM, .atom = &avar_0.link };
 lib_lambda_t llam_id = { .link.tag = LIB_LAMBDA, .body = &llam_id_body.link };
 
-/* Applies 0 to 1. */
-atom_app_t aapp_0_to_1 = { .link.tag = ATOM_APP,
-                           .func = &avar_0.link, .arg = &lvar_1.link };
-atom_app_t aapp_1_to_0 = { .link.tag = ATOM_APP,
-                           .func = &avar_1.link, .arg = &lvar_0.link };
+/* Library that constructs a constant function. */
+lib_code_func_t llam_mkconst_body = {
+    .link.tag = LIB_CODE_FUNC, .block = NULL };
+lib_lambda_t llam_mkconst = { .link.tag = LIB_LAMBDA,
+                              .body = &llam_mkconst_body.link };
+
+/* it's ok if ninstrs is larger than necessary */
+block_t *mkblock(size_t instrs_len) {
+    block_t *b = GC_MALLOC(sizeof(block_t) + instrs_len);
+    b->num_instrs = instrs_len;
+    return b;
+}
 
 int main(int argc, char **argv)
 {
     GC_INIT();
 
-    uint8_t instrs[1024];
-    ip_t ip = instrs;
-    write_op    (&ip, OP_CONST_STRING);
-    write_string(&ip, "begin");
-    write_op    (&ip, OP_PRINT);
+    ip_t ip;
+    linkinstr_t *lp;
+
+#define OP(opname) ((ip++)->op = OP_##opname)
+#define OPARG(opname, init)                                    \
+    (*(ip++) = ((instr_t) {.op = OP_##opname, .arg.init}))
+
+#define WRITEL(name, val) write_##name(&lp, val)
+
+
+    {
+        block_t *const_block = llam_mkconst_body.block = mkblock(100);
+        ip = const_block->instrs;
+        size_t useoff = ip - const_block->instrs;
+        OPARG(USE, atom = &avar_0.link);
+        OP(RET);
+
+        lp = const_block->linkinstrs = GC_MALLOC(10);
+        lp->op = LINKOP_INSTR;
+        lp->shift = 0xdeadbeef;
+        lp->offset = useoff;
+        lp++;
+        const_block->num_linkinstrs = lp - const_block->linkinstrs;
+    }
+
+    instr_t instrs[1024];
+    ip = instrs;
+    OPARG(CONST_STRING, str = "begin");
+    OP(PRINT);
 
     /* Push & load the libraries. */
-    write_op    (&ip, OP_LIB);
-    write_lib   (&ip, &lcode_int_7.link);
-    write_op    (&ip, OP_LOAD); /* 0 = lcode_int_7 */
+    OPARG(LIB, lib = &llam_mkconst.link);
+    OP(LOAD); /* 0 = llam_mkconst */
 
-    write_op    (&ip, OP_LIB);
-    write_lib   (&ip, &llam_id.link);
-    write_op    (&ip, OP_LOAD); /* 0 = llam_id, 1 = lcode_int_7 */
+    OPARG(LIB, lib = &lcode_int_7.link);
+    OP(LOAD); /* 0 = lcode_int_7, 1 = llam_mkconst */
 
-    /* Apply llam_id to lcode_int_7. */
-    write_op    (&ip, OP_USE);
-    write_atom  (&ip, &aapp_0_to_1.link);
+    OPARG(CONST_STRING, str = "loaded");
+    OP(PRINT);
+
+    /* Apply llam_mkconst to lcode_int_7. */
+    OPARG(USE, atom = &aapp_1_to_0.link);
+
+    OPARG(CONST_STRING, str = "linked");
+    OP(PRINT);
+
+    /* Apply the function. */
+    OPARG(CONST_INT, num = 3);
+    OP(APPLY);
 
     /* Return the value. */
-    write_op    (&ip, OP_RET);
+    OP(RET);
 
     state_t S;
     state_init(&S, instrs);

@@ -5,35 +5,20 @@
 
 env_t empty_env;
 
-/* Reading from bytecode stream */
-op_t    read_op(ip_t *ip);
-shift_t read_shift(ip_t *ip);
-int_t   read_int(ip_t *ip);
-lib_t  *read_lib(ip_t *ip);
-atom_t *read_atom(ip_t *ip);
-ip_t    read_ip(ip_t *ip);
-char   *read_string(ip_t *ip);
-
-void write_op(ip_t *ip, op_t op);
-void write_shift(ip_t *ip, shift_t shift);
-void write_ip(ip_t *ip, ip_t instrs);
-
-
 /* Library manipulation */
 atom_t *shift_atom(atom_t *atom, shift_t shift);
 
 lib_t *shift_lib(lib_t *lib, shift_t shift);
 shift_t unshift_lib(lib_t **libp);
 
+
 /* Substitutions */
-/* precondition: subst is a subst_shift */
 shift_t subst_get_shift(subst_t *subst);
-/* precondition: subst is a subst_lib */
-lib_t *subst_get_lib(subst_t *subst);
 
 bool subst_lookup(subst_t *subst, shift_t var, atom_t **atomp, lib_t **libp);
 
-void subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig);
+/* Return value can safely be ignored if `shift > 0'. */
+subst_t *subst_shift(subst_shift_t *s, shift_t shift, subst_t *orig);
 
 bool atom_subst_fast(
     subst_t *subst, atom_t *atom, atom_t **atomp, lib_t **libp);
@@ -59,7 +44,7 @@ int_t stack_pop_int(stack_t *stack);
 void stack_push_int(stack_t *stack, int_t val);
 char *stack_pop_string(stack_t *stack);
 
-void stack_push_closure(stack_t *stack, ip_t block, env_t env);
+void stack_push_closure(stack_t *stack, block_t *block, env_t env);
 
 void state_init(state_t *state, ip_t ip);
 

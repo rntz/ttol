@@ -59,7 +59,6 @@ typedef struct {
 
 /* Instructions. */
 typedef uint8_t op_t;
-typedef uint8_t *ip_t;
 enum op {
     /* Basic CAM instructions. */
     OP_ACCESS,
@@ -73,9 +72,23 @@ enum op {
     OP_CONST_INT, OP_CONST_STRING,
     /* Library-related instructions. */
     OP_LIB, OP_USE, OP_LOAD, OP_FUNC,
-    /* Needed to pad replaced "use" instructions. */
-    OP_NOP,
 };
+
+typedef struct block block_t;
+
+typedef struct {
+    op_t op;
+    union {
+        shift_t shift;
+        block_t *block;
+        int_t num;
+        char *str;
+        lib_t *lib;
+        atom_t *atom;
+    } arg;
+} instr_t;
+
+typedef instr_t *ip_t;
 
 
 /* Runtime state */
@@ -90,8 +103,27 @@ typedef struct {
     subst_t *libsubst;          /* Lib env. */
 } env_t;
 
+/* Functions, closures, etc. */
 struct closure { ip_t instrs; env_t env; };
 struct frame { ip_t ip; env_t env; };
+
+typedef uint8_t linkop_t;
+enum linkop { LINKOP_LOAD, LINKOP_INSTR, LINKOP_NOP };
+
+typedef struct {
+    linkop_t op;
+    shift_t shift;              /* only used by LINKOP_FUNC */
+    size_t offset;              /* offset of relvant instruction */
+} linkinstr_t;
+
+struct block {
+    /* if num_instrs is overly large, we get excess allocation */
+    size_t num_instrs;
+    /* if num_linkinstrs is overly large, we get undefined behavior(!) */
+    size_t num_linkinstrs;
+    linkinstr_t *linkinstrs;
+    instr_t instrs[];
+};
 
 /* Stack. */
 typedef struct {
@@ -115,15 +147,6 @@ typedef struct { lib_t link; lib_t *body; } lib_lambda_t;
 typedef struct { lib_t link; int_t val; } lib_code_int_t;
 typedef struct { lib_t link; char *val; } lib_code_str_t;
 typedef struct { lib_t link; lib_t *val; } lib_code_lib_t;
-
-enum linkop { LINKOP_LOAD, LINKOP_USE, LINKOP_FUNC, LINKOP_OTHER_INSTR };
-
-typedef struct {
-    size_t instrs_len;
-    size_t linkops_len;
-    uint8_t *linkops;
-    op_t instrs[];
-} block_t;
 
 typedef struct {
     lib_t link;

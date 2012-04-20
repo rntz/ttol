@@ -180,9 +180,9 @@ structure Cam = struct
    * works, but increases copying. TODO: explain.
    *)
 
-  fun codeVal (CFunc f) = VClos (f, empty)
-    | codeVal (CLib l) = VLib l
-    | codeVal (CConst c) = VBase c
+  fun codeVal k (CFunc f) = VClos (f, empty)
+    | codeVal k (CLib l) = VLib (shiftL k l)
+    | codeVal k (CConst c) = VBase c
 
   (* step : state -> state *)
   fun step (s as {instrs, env, stack} : state) : state =
@@ -217,11 +217,7 @@ structure Cam = struct
            | ILib l => push (VLib (substLib subst l))
            | IUse a => (case unshiftL (substAtom subst a)
                          of (k, LCode c) =>
-                            (* c must be closed, so we can ignore k.
-                             * TODO: is there an invariant about k we can check?
-                             * should it be 0?
-                             *)
-                            push (codeVal c)
+                            push (codeVal k c)
                           | _ => raise Stuck "used atom did not subst to LCode")
            | ILoad => (case stack
                         of VLib l :: stack => mkstate is (addLib l env) stack
