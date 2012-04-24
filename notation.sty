@@ -1,5 +1,7 @@
 \newcommand{\ms}[1]{\ensuremath{\textsf{#1}}}
 
+\newcommand{\step}{\mapsto}
+
 \newcommand{\llib}{\ensuremath{\lambda^{\ms{lib}}}}
 
 \newcommand{\binder}[2]{#1 .\: #2}
@@ -49,13 +51,21 @@
 
 \newcommand{\lib}[1]{\ms{lib}\:{#1}}
 \newcommand{\use}[1]{\ms{use}\:{#1}}
-\newcommand{\load}[3]{\leter{let}{\lib{#1}}{#2}{#3}}
-% \newcommand{\load}[3]{\ms{load}~{#1}={#2}~\ms{in}~{#3}}
+%\newcommand{\load}[3]{\leter{let}{\lib{#1}}{#2}{#3}}
+\newcommand{\load}[3]{\leter{load}{#1}{#2}{#3}}
 
 \newcommand{\ebox}[1]{\ms{box}\:{#1}}
 \newcommand{\letbox}[3]{\leter{let}{\ebox{#1}}{#2}{#3}}
 
-\newcommand{\Ginv}[1]{\fG^{-1}\,{#1}}
-\newcommand{\Gbox}[1]{\fG{#1}}
-\newcommand{\Fbox}[1]{\fF{#1}}
-\newcommand{\letF}[3]{\leter{let}{\Fbox{#1}}{#2}{#3}}
+% \newcommand{\Ginv}[1]{\fG^{-1}\,{#1}}
+% \newcommand{\Gbox}[1]{\fG{#1}}
+% \newcommand{\Fbox}[1]{\fF{#1}}
+% \newcommand{\letF}[3]{\leter{let}{\Fbox{#1}}{#2}{#3}}
+
+\newcommand{\subn}[2]{[{#1}]\,{#2}}
+\newcommand{\sub}[3]{\subn{{#1}/{#2}}{#3}}
+
+\newcommand{\istype}{~\ms{type}}
+\newcommand{\isiface}{~\ms{iface}}
+\newcommand{\valish}{~\ms{valish}}
+\newcommand{\isvalue}{~\ms{value}}

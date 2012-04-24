@@ -6,6 +6,7 @@
 \usepackage{array}
 \usepackage{color}
 \usepackage{enumerate}
+\usepackage{hyperref}
 \usepackage{latexsym}           %for \Box
 \usepackage{multicol}
 \usepackage{url}
@@ -26,8 +27,8 @@
 
 \maketitle
 
-{\small Parts of this paper which are as yet unproven and/or unimplemented
-  are in \bs{\bscolor}.}
+% {\small Parts of this paper which are as yet unproven and/or unimplemented
+%   are in \bs{\bscolor}.}
 
 % TODO: abstract goes here.
 
@@ -44,8 +45,8 @@ before use. Prior knowledge of these is not necessary.
 
 % FIXME: Note re understanding linking & loading.
 
-% Detailed knowledge of the usual implementations of the processes of linking and
-% loading programs is not required; the purpose of these processes, however,
+% Detailed knowledge of the usual implementations of the processes of linking
+% and loading programs is not required; the purpose of these processes, however,
 % informs the motivation of this paper.
 
 % % FIXME: phrasing
@@ -66,14 +67,15 @@ proof-carrying code. However, there are two processes almost as ubiquitous as
 compilation that have been mostly ignored by formal efforts: linking and
 loading.
 
-We produce the \llib{}-calculus, showing how a typed language with explicit
-support for linking and loading may be formalized and implemented. Aside from
-the straightforward goal of filling a gap in our formal understanding of
-computation, we were particularly motivated by the need of ConcertOS, a project
-to build a typesafe operating system, for a model of linking and loading. The
-content of this work is, however, not specific to ConcertOS.
+We define the \llib{}-calculus, showing how a typed language with explicit
+support for linking and loading may be formalized and implemented.
+% TODO: stuff about CAM^lib. para break.
+% This sentence has too many commas.
+Aside from the straightforward goal of filling a gap in our formal understanding
+of computation, we are particularly motivated by the need of ConcertOS, a
+project to build a typesafe operating system, for a model of linking and
+loading. The content of this work is, however, not specific to ConcertOS.
 
-% TODO: more stuff.
 
 % TODO: citations? refer to typed modular assembly stuff?
 
@@ -98,246 +100,192 @@ content of this work is, however, not specific to ConcertOS.
 
 \subsection{Modal logic and mobility}
 
-Our first idea was to use some variety of \emph{modal logic} as our typesystem.
-Modal logics are a family of logics which are roughly characterized by dealing
-with the concept of \emph{necessity} (and its dual, \emph{possibility}, which we
-do not consider here). ``Necessity'', itself a slippery concept, is usually
-understood in terms of the notion of ``possible worlds''. In general, a
-proposition may be true in one possible world and false in another. Propositions
-that are true in \emph{all} worlds are called ``necessary''. In contrast,
-``contingent'' truths may only be true in ``our'' world; or at least we only
-\emph{know} they are true in our world.\footnote{This is an extremely rough
-  characterization, and ignores many important varieties of modal logic.}
+We initially expected to use some variety of \emph{modal logic} as our
+typesystem. Modal logics are a family of logics which deal with the concept of
+\emph{necessity}\footnote{And its dual, \emph{possibility}, which we do not
+  consider here}. ``Necessity'' is understood in terms of ``possible worlds''.
+In general, a proposition may be true in one possible world and false in
+another. ``Necessary'' propositions are those true in \emph{all} possible
+worlds. In contrast, ``contingent'' truths may only be true in ``our'' world; or
+at least we only \emph{know} they are true in our world.\footnote{This is an
+  extremely rough characterization, and ignores many important varieties of
+  modal logic.}
 
-Modal logics typically add a unary propositional connective expressing that a
-proposition $A$ is ``necessary'', which we write $\nec A$. In Figure
-\ref{fig:modal} we give the syntax and relevant natural-deduction-style
-inference rules for a modal logic in the style of \todo{cite Pfenning \&
-  Davies}. We omit type operators other than $\nec$ and the related terms and
-rules; the usual array of type operators ($\x$, $+$, $\to$, etc.) can be added
-to the system without trouble.
+% TODO: add mobile motivation section here.
 
-For those unfamiliar with natural-deduction formulations of modal logic, the
-first thing to note is the presence of two contexts $\D$ and $\G$, and
-corresponding classes of variable $u$ and $x$. $\D$ holds ``necessary''
-hypotheses, $\G$ ``contingent'' ones. As such, when proving $\nec A$ via
-$\nec$-Intro, we keep the context $\D$ of hypotheses true in all possible
-worlds, but discard the context $\G$ of hypotheses true perhaps only in our
-world. \todo{Explain $\nec$-Elim, hyp rules.}
+Modal logic adds a unary propositional connective expressing that a proposition
+$\tau$ is ``necessary'', which we write $\nec \tau$. What suggested modal logic
+to us was that the $\nec$ operator has been shown to represent \emph{mobile}
+types \cite{murphy2008modal}. The notion of mobile code arises in distributed
+computation. In general, code in a distributed system may depend on the
+resources of a particular computational node to run. ``Mobile'' code is code
+that can run at any node. Modal logic models this if we let our ``possible
+worlds'' be nodes: a necessary proposition is true in every world, just as
+mobile code can run on any node. $\nec \tau$ is then the type of a piece of
+mobile code that returns a value of type $\tau$.
 
-\begin{figure}
-  \begin{description}
-  \item[Syntax:]
-    \[\begin{array}{rcl}
-      \D &::=& \ecx ~|~ \D, u \of A\\
-      \G &::=& \ecx ~|~ \G, x \of A\\
-      A &::=& \nec A ~|~ ...\\
-      M &::=& x ~|~ u ~|~ \ebox{M} ~|~ \letbox{u}{M}{M} ~|~ ...\\
-    \end{array}\]
+Libraries are akin to mobile code: they are stored on-disk in a format portable
+to any machine with the same operating system and instruction set---at least, as
+long as it can supply the library's dependencies. This is the sticking point:
+modal logic provides no good way to represent libraries with dependencies.
+Explaining this problem requires a digression.
 
-  \item[Judgments:]\ $\D; \G \ent M \isa A$
+\subsection{Dependencies}
 
-  \item[Rules:]
-    \[
-    \infer[\text{hyp}_1]{\D;\G, x \of A, \G' \ent x \isa A}{} \qquad
-    \infer[\text{hyp}_2]{\D, u \of A, \D'; \G \ent u \isa A}{}
-    \]
+Suppose that $\nec \tau$ is the type of a library with \emph{no} dependencies
+that contains code of type $\tau$. What then is the type of a library that
+\emph{does} have a dependency? First, note that the primary operation on a
+library with a dependency is linking it against a library fulfilling that
+dependency.\footnote{There is also the issue of mutually dependent libraries.
+  For simplicity, and because we believe that it is in practice quite feasible
+  to avoid such circular dependencies, we ignore this problem entirely.} Second,
+libraries with dependencies are defined in terms of the depended-upon thing, as
+if it were a free variable. Together these suggest that libraries with
+dependencies can be viewed as a kind of function, taking their dependency as an
+argument, and returning their own contents as a result.
 
-    \[
-    \infer[\nec\text{-Intro}]{\D;\G \ent \ebox{M} \isa \nec A}{
-      \D; \ecx \ent M \isa A}
-    \qquad
-    \infer[\nec\text{-Elim}]{\D;\G \ent \letbox{u}{M_1}{M_2} \isa A_2}{
-      \G \ent M_1 \isa \nec A_1 &
-      \D,u \of A_1; \G \ent M_2 \isa A_2}
-    \]
-  \end{description}
-  \label{fig:modal}
-  \caption{Syntax and typing rules of modal logic with necessity}
-\end{figure}
+Consider then a library $l$ that depends on a $\tau_1$ and produces a $\tau_2$.
+If libraries are functions of their dependencies, perhaps we can give $l$ the
+type $\nec \tau_1 \to \nec \tau_2$? Unfortunately this does not suffice, because
+it is not \emph{mobile}. $\nec \tau_1 \to \nec \tau_2$ is an ordinary function
+type, and its values are not necessarily of a form that can be written to disk
+and shipped between machines the way a library (even a library with as-yet
+unfilled dependencies) can.
 
-% TODO: clarity.
-\subsubsection{Mobility}
-What suggested modal logic to us was that the $\nec$ operator has been shown to
-model \emph{mobile} types. \todo{cite Tom's thesis} In a distributed
-computation, ``mobile'' code is code that can be run on any node. Modal logic
-models this if we let our ``possible worlds'' be computational nodes; a
-necessary proposition is the type of code that can run on any node.
+Can we fix this by adding a surrounding $\nec$, giving $l \isa \nec(\nec \tau_1
+\to \nec \tau_2)$? Unfortunately, this still does not suffice. While this type
+is mobile, it still uses an ordinary function as the mechanism for linking
+against a dependency, which is undesirable for two reasons. First, it means that
+linking, which involves calling the function contained in $l$, can have
+arbitrary side-effects (eg. nontermination or malicious behavior), which is
+clearly undesirable.
 
-% Mobility corresponds to modal logic because ``possible worlds'' model nodes at
-% which code can run; a necessary proposition is the type of code that can run
-% on any node.
+Second, it makes \emph{partial linking}, where we link a library against just
+one of its several dependencies, impractical. Consider that curried functions
+must receive their arguments \emph{in order}; given $f \isa \tau_1 \to \tau_2
+\to \tau_3$ and $y \isa \tau_2$, I cannot apply $f$ to $y$ without also having
+some $x \of \tau_1$. I can get around this by creating a wrapper function:
+\[ \lam{x}{\tau_1}{f \ap x \ap y} \]
 
-Libraries are akin to mobile code: libraries are stored on-disk in a format
-portable among and executable on any machine understanding the corresponding
-file format and machine code---at least, as long as each machine can supply the
-library's dependencies. This is the sticking point: modal logic provides no good
-way to represent libraries with dependencies.
-
-\todo{Need story on why $\nec((\nec A_1 \x \nec A_2 \x ... \x \nec A_n) \to \nec
-  B)$ doesn't suffice. Integrate story about why libraries-with-deps ``look
-  like'' functions into this.}
-
-% because: arbitrary runtime code exec between getting the \nec (A_1 ... A_n)
-% and producing \nec B; which disallows "partial" linking against just one A_i.
+However, this merely delays the actual call to $f$ until the first argument $x$
+is received.\footnote{Uncurried functions $f \of \tau_1 \x \tau_2 \to \tau_3$
+  exhibit a stronger version of this problem: they cannot be called until
+  \emph{all} arguments are received.} If $f$ is the underlying function of a
+library with two dependencies, this means we cannot do the actual work of
+linking the library against its second dependency until we have its first. Real
+linkers do not suffer from this problem.
 
 
 \subsection{The adjoint calculus}
 
 To deal with dependencies, we turn to Benton and Wadler's \emph{adjoint
-  calculus} \todo{cite}. Adjoint calculi are a family of $\lambda$-calculi that
-can be used to ``encode'' both modal logic and other logics such as
-intuitionistic linear logic. Here we concern ourselves only with its relation to
-modal logic. In Figure \ref{fig:adjoint}, we present the relevant syntax and
-rules of the adjoint calculus.
+  calculus} \cite{bentonwadler96adjoint}. Adjoint calculi are a family of
+$\lambda$-calculi that can be used to ``encode'' both modal logic and other
+logics such as intuitionistic linear logic. Here we concern ourselves only with
+its relation to modal logic.
+
+\newcommand{\trans}[1]{\ulcorner\!{#1}\!\urcorner}
+
+The adjoint calculus ``splits'' modal logic into two layers, an ``upper'' and a
+``lower''. The upper layer corresponds to necessary or mobile things---for us,
+libraries. The lower layer corresponds to ordinary, contingent things---for us,
+an ordinary programming language to which we wish to add explicit support for
+libraries. Thus we split our types into upper-layer library interfaces $I$ and
+lower-layer types $\tau$; and our terms into libraries $L$ and ordinary terms
+$e$. In Figure \ref{fig:adjoint} we give the syntax and relevant rules of our
+version of the adjoint calculus, which we proceed to develop into the
+$\llib$-calculus.
 
 \begin{figure}[h]
+  \centering
   \begin{description}
     \item[Syntax:]
-    \[\begin{array}{rclrcl}
-      \D &::=& \ecx ~|~ \D, u \of A^\uparrow &\qquad
-      \G &::=& \ecx ~|~ \G, x \of A^\downarrow \\
-      {A^\uparrow} &::=& \fG A^\downarrow ~|~ ... &\qquad
-      A^\downarrow &::=& \fF A^\uparrow ~|~ ...\\
-      M^\uparrow &::=& u ~|~ \Gbox{M^\downarrow} ~|~ ... &\qquad
-      M^\downarrow &::=& x ~|~ \Fbox{M^\uparrow} ~|~ \Ginv{M^\uparrow}
-      ~|~ \letF{u}{M^\downarrow}{M^\downarrow}
-      ~|~ ...\\
+    \[\begin{array}{rrclrrcl}
+      \text{library contexts} & \D &::=& \ecx ~|~ \D, u \of I &
+      \text{term contexts} & \G &::=& \ecx ~|~ \G, x \of \tau \\
+      \text{interfaces} & I &::=& \up{\tau} ~|~ ... &
+      \text{types} & \tau &::=& \dn{I} ~|~ ...\\
+      \text{libraries}& L &::=& u ~|~ \code{e} ~|~ ... &
+      \text{terms} & e &::=& x ~|~ \lib{L} ~|~ \use{L}\\
+      &&&&&&~|~& \load{u}{e_1}{e_2} ~|~ ...\\
     \end{array}\]
-  \item[Judgments:]\ $\D \ent M^\uparrow \isa A^\uparrow$ \ and
-    \ $\D;\G \ent M^\downarrow \isa A^\downarrow$
+  \item[Judgments:]\ $\D \ent L \isa I$ \ and
+    \ $\D;\G \ent e \isa \tau$
   \item[Rules:]
     \[
-    \infer[\fG\text{-Intro}]{\D \ent \Gbox{M^\downarrow} \isa \fG A^\downarrow}{
-      \D;\ecx \ent M^\downarrow \isa A^\downarrow}
+    \infer[\up{\text{I}}]{\D \ent \code{e} \isa \up{\tau}}{
+      \D;\ecx \ent e \isa \tau}
     \qquad
-    \infer[\fG\text{-Elim}]{\D;\G \ent \Ginv{M^\uparrow} \isa A^\downarrow}{
-      \D \ent M^\uparrow \isa \fG A^\downarrow}
+    \infer[\up{\text{E}}]{\D;\G \ent \use{L} \isa \tau}{
+      \D \ent L \isa \up{\tau}}
     \]
     \[
-    \infer[\fF\text{-Intro}]{\D;\G \ent \Fbox{M^\uparrow} \isa \fF A^\uparrow}{
-      \D \ent M^\uparrow \isa A^\uparrow}
+    \infer[\dn{\text{I}}]{\D;\G \ent \lib{L} \isa \dn{I}}{
+      \D \ent L \isa I}
     \qquad
-    \infer[\fF\text{-Elim}]{
-      \D;\G \ent \letF{u}{M_1^\downarrow}{M_2^\downarrow} \isa A_2^\downarrow
-    }{
-      \D;\G \ent M_1^\downarrow \isa \fF A_1^\uparrow &
-      \D,u \of A_1^\uparrow;\G \ent M_2^\downarrow \isa A_2^\downarrow}
+    \infer[\dn{\text{E}}]{\D;\G \ent \load{u}{e_1}{e_2} \isa \tau}{
+      \D;\G \ent e_1 \isa \dn{I} &
+      \D,u \of I;\G \ent e_2 \isa \tau}
     \]
   \end{description}
 
-  \caption{Syntax and typing rules of a generic adjoint calculus}
+  \caption{Syntax and typing rules of an adjoint calculus for libraries}
   \label{fig:adjoint}
 
 \end{figure}
 
-\newcommand{\trans}[1]{\ulcorner\!{#1}\!\urcorner}
+In place of the singular modal operator $\nec$, we have two operators. The
+first, $\up{\tau} \in I$, projects from the term to the library layer; it is the
+interface of a library containing code of type $\tau$. The second, $\dn{I}$,
+projects from the library to the term layer; it is the type of a run-time
+reference to a library with interface $I$. Thus the modal $\nec \tau$ becomes
+$\dn{\up{\tau}}$: the type of a run-time reference to a library containing code
+of type $\tau$.
 
-Compared to modal logic, the adjoint calculus ``splits'' types $A$ and terms $M$
-into two layers, the ``upper layer'' $A^\uparrow$, $M^\uparrow$ and the ``lower
-layer'' $A^\downarrow$, $M^\downarrow$. The encoding of modal logic into adjoint
-calculus is given in figure \ref{fig:trans}, which defines translations
-$\trans{A} \in A^\downarrow$ and $\trans{M} \in M^\downarrow$. The intuition
-behind the translation is that the upper layer corresponds to ``necessary''
-entities and the lower layer to ``contingent'' ones. In particular, the
-upper-layer typing judgment $\D \ent M^\uparrow \isa A^\uparrow$ does not have a
-context $\G$ of lower-layer hypotheses; this enforces the restriction that
-proofs of necessary propositions cannot depend on contingent hypotheses. The
-$\fG$ and $\fF$ operators can be seen as ``coercions'' between the two layers.
-$\fG$ ``lifts'' the lower, contingent layer into the upper, necessary one, while
-$\fF$ ``drops'' from the necessary into the contingent.
+As we have two layers, we also have two contexts: $\D$ for library variables and
+$\G$ for term variables. Terms may depend on libraries, so the typing judgment
+$\D;\G \ent e \isa \tau$ for terms involves both contexts. However, the typing
+judgment $\D \ent L \isa I$ for libraries lacks a term context, preventing
+libraries from depending on arbitrary run-time values. Thus to embed a library
+in a program via the $\ms{lib}$ operator, we must throw away our $\G$ context,
+as in the $\dn{\text{I}}$ rule. Similarly, to embed code into a library, it must
+typecheck with an empty term context, as in the $\up{\text{I}}$ rule. The
+$\up{\text{E}}$ rule is straightforward: if we have a library $L \isa \up{\tau}$
+containing code of type $\tau$, we can \ms{use} it within a program to retrieve
+the embedded $\tau$. $\dn{\text{E}}$ is only slightly more subtle: given $e_1
+\isa \dn{I}$, a reference to a library with interface $I$, we can bind a library
+variable $u \of I$ to the library it refers to to.
 
-% Whenever we move into the upper layer, we lose our lower-layer context $\G$;
-% so $\fF \fG$ corresponds to $\nec/\ms{box}$ because, although it begins and
-% ends in the lower layer, it goes through the upper layer on the way, forcing
-% us to discard our contingent hypotheses.
+
+\subsubsection{Extending the library layer}
 
-% As in modal logic, proofs of necessary propositions cannot depend on
-% contingent hypotheses; hence the upper layer judgment $\D \ent M^\uparrow \isa
-% A^\uparrow$ does not involve a $\G$ context. This restriction is
-
-% The $\fG$ operator ``lifts'' the contingent into the necessary: $\fG$-Intro
-% ``injects'' a lower-layer proof $\D; \ecx \ent M^\downarrow \isa A^\downarrow$
-% into the upper layer, so long as it relies on no lower-layer hypotheses; and
-% $\fG$-Elim lets us use a lifted proof in any lower-layer context. The $\fF$
-% operator, correspondingly, ``drops'' the necessary into the contingent.
-
-\todo{Clearer explanation of modal/adjoint correspondence. Need feedback.}
-
-% Encoding modal logic in the adjoint calculus translates modal types $A$ and
-% terms $M$ into $A^\downarrow$ and $M^\downarrow$, the lower layer of the adjoint
-% calculus. Whatever ordinary, non-modal type operators we had in $A$ ($\times$,
-% $+$, $\to$, etc.) are added to $A^\downarrow$ unchanged. The modal operator
-% $\nec$ is translated $\fF \fG$.
-
-\begin{figure}[h]
-  \centering
-  \begin{tabular}{cc}
-    \(\begin{aligned}
-      \trans{\ecx} &= \ecx\\
-      \trans{\D, u \of A} &= \trans{\D}, u \of \fG \trans{A}\\
-      \trans{\G, x \of A} &= \trans{\G}, x \of \trans{A}\\
-      \trans{\nec A} &= \fF \fG\, \trans{A}
-    \end{aligned}\) &
-    \(\begin{aligned}
-      \trans{x} &= x\\
-      \trans{u} &= \Ginv{u}\\
-      \trans{\ebox{M}} &= \Fbox{\Gbox{\trans{M}}}\\
-      \trans{\letbox{u}{M_1}{M_2}} &= \letF{u}{\trans{M_1}}{\trans{M_2}}
-    \end{aligned}\)
-  \end{tabular}
-  % \[
-  % \infer[\nec\text{-Intro}]{\D;\G \ent \ebox{M} \isa \nec A}{
-  %   \deduce{\D;\ecx \ent M \isa A}{\mathcal{D}}}
-  % \qquad \leadsto \qquad
-  % \infer[\fF\text{-Intro}]{
-  %   \trans{\D};\trans{\G} \ent \Fbox{\Gbox{\trans{M}}} \isa \fF \fG \trans{A}
-  % }{
-  %   \infer[\fG\text{-Intro}]{
-  %     \trans{\D} \ent \Gbox{\trans{M}} \isa \fG \trans{A}
-  %   }{
-  %     \deduce{\trans{\D}; \ecx \ent \trans{M} \isa \trans{A}}{
-  %       {\mathcal{D}'}}
-  %   }}
-  % \qquad \text{(given $D \leadsto D'$)}
-  % \]
-  \caption{Modal logic to adjoint calculus translation}
-  \label{fig:trans}
-\end{figure}
-
-% TALK ABOUT:
-% - relation of modal logic to adjoint calculus
-% - explain adjoint calculus straight up
-% - adjoint calculus lets us add structure to the upper layer.
-%   in particular, functions for dependencies.
-
-\subsubsection{Dependencies as upper-layer functions}
-
-% TODO: phrasing
-% This encoding ``decomposes'' $\nec$ into two operators $\fF$ and $\fG$, but
-% never uses them separately.
-
-The only upper-layer connective \emph{needed} to encode modal logic is $\fG$.
-But having separated the two layers, we are free to add other connectives to
-$A^\uparrow$. It is this additional expressiveness that suits the adjoint
-calculus to our purposes: Libraries are ``mobile'' and therefore belong to the
-upper layer. Upper layer connectives let us express the ``super-structure'' of a
-library, beyond the lower-layer type of the code it contains.
-
-In particular, we can now express dependencies as library-level functions
-\emph{directly}, by adding them to the upper layer:
+The only library-layer operator \emph{needed} to encode modal $\nec$ is
+$\up{\tau}$. But having separated the two layers, we are free to add other
+connectives to $I$. It is this additional expressiveness that suits the adjoint
+calculus to our purposes: library-layer connectives let us express the the
+``super-structure'' of a library, beyond merely the type of the code it
+contains. In particular, we can express dependencies as \emph{library-layer}
+functions, distinct from ordinary term-layer functions:
 \begin{align*}
-  A^\uparrow &::= ... ~|~ A^\uparrow \to A^\uparrow\\
-  M^\uparrow &::= ... ~|~ \lam{u}{A^\uparrow}{M^\uparrow} ~|~ M^\uparrow \ap M^\uparrow
+  I &::= ... ~|~ I \to I\\
+  L &::= ... ~|~ \lam{u}{I}{L} ~|~ L \ap L
 \end{align*}
 This cleanly separates the library-level computation of linking a library
-against its dependencies from ordinary run-time computation, and so let us
-implement partial linking correctly as desired.
+against its dependencies from ordinary run-time function application. We can
+thus avoid arbitrary link-time side-effects simply by not introducing any
+side-effectful operations to the library layer. Partial linking, as we shall
+see, is more complicated, but still doable.
 
-In general, by adding ``library layer'' (ie. upper layer, as opposed to the
-lower or ``term'' layer) connectives, we express that these correspond to the
-structure of the library itself, not the code it contains. For a concrete
-example of this distinction, consider the following C-language header files:
+In general, by adding library layer connectives, we express that these
+correspond to the structure of the library \emph{itself}, not the code it
+contains. For a concrete example of this distinction, let us first add library
+products:
+\begin{align*}
+  I &::= ... ~|~ I \x I\\
+  L &::= ... ~|~ \<L, L\> ~|~ \proj{i}{L}
+\end{align*}
+
+Now, consider the following C-language header files:
 \begin{center}
   \begin{tabular}{l|l}
     \emph{File:} \texttt{A.h} & \emph{File:} \texttt{B.h}\\\hline
@@ -354,66 +302,426 @@ struct { int x; int y; } p;
     \end{minipage}
   \end{tabular}
 \end{center}
+
 A library implementing the interface expressed by \texttt{A.h} will contain two
 labels, each of type \texttt{int}. A library implementing \texttt{B.h} will
 contain one label of type \texttt{struct \{int x; int y;\}} (in other words, a
-pair of \texttt{int}s). In our terminology, the former expresses a library-layer
-pair, and the latter a term-layer pair, and could be expressed by the types
-$(\fG\,\ms{int}) \x (\fG\,\ms{int})$ and $\fG(\ms{int} \x \ms{int})$
-respectively.
-
-\subsubsection{Polymorphism}
-
-\todo{Polymorphism.}
+pair of \texttt{int}s). The interface of \texttt{A.h} is thus best represented
+by $\up{\ms{int}} \x \up{\ms{int}}$ (involving a library-layer product), while
+\texttt{B.h}'s interface is $\up{\ms{int} \x \ms{int}}$ (involving a term-layer
+product).
 
 
-\section{$\llib$-calculi}
+\subsubsection{Polymorphism}
+
+Before presenting the full $\llib$-calculus, one complication remains. The
+adjoint calculus we have presented so far lacks parametric polymorphism, the
+ability to universally quantify over types. Adding support for this is
+straightforward syntactically, but requires adding a new context $\Psi$ for type
+variables, which raises the question of how this context behaves in our
+two-layer system. Is $\Psi$ discarded like $\G$ when we move into the library
+layer, or preserved like $\D$? For the sake of expressivity, we'd like $\Psi$ to
+be preserved, otherwise it becomes impossible to implement a function with a
+type such as $\fa{\alpha}{\dn{\up{\alpha}} \to \alpha}$. Since types $\tau$ are
+conceptually lower-layer things, however, it's not immediately obvious that this
+is safe. Luckily for us, it turns out that it is.\footnote{\bs{Explanation and
+    proof to be given in full thesis.}}
+
+
+\section{The $\llib$-calculus}
 
 The $\llib$ calculus is a polymorphic adjoint calculus with functions and
 products at the library layer, and functions, universals, and recursive types at
-the term layer. The term-layer type operators were chosen to make the term layer
-Turing-complete with a minimum of bother, the better to serve as a proof of
-concept.
+the term layer. The library-layer connectives we have discussed already; the
+term-layer type operators were chosen to make the term layer Turing-complete
+with a minimum of bother, the better to model real programming languages and so
+serve as a proof of concept. The syntax and typing rules are given in Figure
+\ref{fig:llib}.
 
-The syntax is given in Figure \ref{fig:llib}. $L$ stands for library-layer
-terms, or just ``libraries'', and $I$ stands for library-layer types, or
-``interfaces''. $e$ stands for lower-layer terms and $\tau$ for their types. The
-only other notable change in notation is that $\fG A^\downarrow$ becomes
-$\up{\tau}$ and $\fF A^\uparrow$ becomes $\dn{I}$.
+\begin{figure}[p]
+  \centering
+  \begin{description}
+  \item[Syntax:]
+    \[\begin{array}{rcl}
+      I &::=& \up{\tau} ~|~ I \to I ~|~ I \x I\\
+      \tau &::=&  \dn{I} ~|~ \tau \to \tau ~|~ \alpha ~|~ \fa{\alpha}{\tau}
+      ~|~ \trec{\alpha}{\tau}\\
+      L &::=& u ~|~ \lam{u}{I}{L} ~|~ L \ap L ~|~ \<L,L\> ~|~ \proj{i}{L}
+      ~|~ \code{e}\\
+      e &::=& x ~|~ \lam{x}{\tau}{e} ~|~ e \ap e
+      ~|~ \Lam{\alpha}{e} ~|~ \Ap{e}{\tau}
+      ~|~ \roll{\alpha}{\tau}{e} ~|~ \unroll{e}\\
+      &~|~& \lib{L} ~|~ \use{L} ~|~ \load{u}{e}{e}
+    \end{array}\]
+  \item[Judgments:]\[
+    \begin{array}[]{lll}
+      \Psi \ent I \isiface &\quad \Psi;\D \ent L \isa I\\
+      \Psi \ent \tau \istype &\quad \Psi;\D;\G \ent e \isa \tau
+      &\quad e \valish
+    \end{array}\]
+  \item[Rules:]
+    \[
+    \infer{\Psi, \alpha, \Psi' \ent \alpha \istype}{} \qquad
+    \infer{\Psi \ent \dn{I} \istype}{\Psi \ent I \isiface} \qquad
+    \infer{\Psi \ent \tau_1 \to \tau_2 \istype}{
+      \Psi \ent \tau_1 \istype &
+      \Psi \ent \tau_2 \istype}
+    \]\[
+    \infer{\Psi \ent \fa{\alpha}{\tau} \istype}{
+      \Psi,\alpha \ent \tau \istype} \qquad
+    \infer{\Psi \ent \trec{\alpha}{\tau} \istype}{
+      \Psi,\alpha \ent \tau \istype}
+    \]
 
-\begin{figure}[h]
-  \[\begin{array}{rcl}
-    I &::=& \up{\tau} ~|~ I \to I ~|~ I \x I\\
-    \tau &::=&  \dn{I} ~|~ \tau \to \tau ~|~ \alpha ~|~ \fa{\alpha}{\tau}
-    ~|~ \trec{\alpha}{\tau}\\
-    L &::=& u ~|~ \lam{u}{I}{L} ~|~ L \ap L ~|~ \<L,L\> ~|~ \proj{i}{L}
-    ~|~ \code{e}\\
-    e &::=& x ~|~ \lam{x}{\tau}{e} ~|~ e \ap e
-    ~|~ \Lam{\alpha}{e} ~|~ \Ap{e}{\tau}
-    ~|~ \roll{\alpha}{\tau}{e} ~|~ \unroll{e}\\
-    &~|~& \lib{L} ~|~ \use{L} ~|~ \load{u}{e}{e}
-  \end{array}\]
+    \[
+    \infer{\Psi \ent \up{\tau} \isiface}{\Psi \ent \tau \istype} \qquad
+    \infer{\Psi \ent I_1 \to I_2 \isiface}{
+      \Psi \ent I_1 \isiface &
+      \Psi \ent I_2 \isiface} \qquad
+    \infer{\Psi \ent I_1 \x I_2 \isiface}{
+      \Psi \ent I_1 \isiface &
+      \Psi \ent I_2 \isiface}
+    \]
+
+    \[
+    \infer{\Psi; \D, u \of I, \D' \ent u \isa I}{}
+    \]\[
+    \infer{\Psi; \D \ent \lam{u}{I_1}{L} \isa I_1 \to I_2}{
+      \Psi;\D, u \of I_1 \ent L \isa I_2} \qquad
+    \infer{\Psi; \D \ent L_1 \ap L_2 \isa I_2}{
+      \Psi;\D \ent L_1 \isa I_1 \to I_2 &
+      \Psi;\D \ent L_2 \isa I_1}
+    \]\[
+    \infer{\Psi; \D \ent \<L_1, L_2\> \isa I_1 \x I_2}{
+      \Psi; \D \ent L_1 \isa I_1 &
+      \Psi; \D \ent L_2 \isa I_2} \qquad
+    \infer{\Psi; \D \ent \proj{i}{L} \isa I_i}{
+      \Psi;\D \ent L \isa I_1 \x I_2}
+    \]\[
+    \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
+      e \valish &
+      \Psi;\D;\ecx \ent e \isa \tau} \qquad
+    \infer{\Psi;\D;\G \ent \use{L} \isa \tau}{
+      \Psi;\D \ent L \isa \up{\tau}}
+    \]
+
+    \[
+    \infer{\Psi;\D;\G, x \of \tau, \G' \ent x \isa \tau}{}
+    \]\[
+    \infer{\Psi;\D;\G \ent \lam{x}{\tau_1}{e} \isa \tau_1 \to \tau_2}{
+      \Psi;\D;\G, x \of \tau_1 \ent e \isa \tau_2} \qquad
+    \infer{\Psi;\D;\G \ent e_1 \ap e_2 \isa \tau_2}{
+      \Psi;\D;\G \ent e_1 \isa \tau_1 \to \tau_2 &
+      \Psi;\D;\G \ent e_2 \isa \tau_1}
+    \]\[
+    \infer{\Psi;\D;\G \ent \Lam{\alpha}{e} \isa \fa{\alpha}{\tau}}{
+      \Psi,\alpha;\D;\G \ent e \isa \tau} \qquad
+    \infer{\Psi;\D;\G \ent \Ap{e}{\tau'} \isa \sub{\tau'}{\alpha}{\tau}}{
+      \Psi \ent \tau' \istype &
+      \Psi;\D;\G \ent e \isa \fa{\alpha}{\tau}}
+    \]\[
+    \infer{\Psi;\D;\G \ent \roll{\alpha}{\tau}{e} \isa \trec{\alpha}{\tau}}{
+      \Psi;\D;\G \ent e \isa \sub{\trec{\alpha}{\tau}}{\alpha}{\tau}}
+    \qquad
+    \infer{\Psi;\D;\G \ent \unroll{e} \isa \sub{\trec{\alpha}{\tau}}{\alpha}{\tau}}{
+      \Psi;\D;\G \ent e \isa \trec{\alpha}{\tau}}
+    \]\[
+    \infer{\Psi;\D;\G \ent \lib{L} \isa \dn{I}}{\Psi;\D \ent L \isa I} \qquad
+    \infer{\Psi;\D;\G \ent \use{L} \isa \tau}{\Psi;\D \ent L \isa \up{\tau}}
+    \qquad
+    \infer{\Psi;\D;\G \ent \load{u}{e_1}{e_2} \isa \tau}{
+      \Psi;\D;\G \ent e_1 \isa \dn{I} &
+      \Psi;\D, u \of I; \G \ent e_2 \isa \tau}
+    \]
+
+    \[
+    \infer{\lam{x}{\tau}{e} \valish}{} \qquad
+    \infer{\Lam{\alpha}{e} \valish}{} \qquad
+    \infer{\roll{\alpha}{\tau}{e} \valish}{e \valish} \qquad
+    \infer{\lib{L} \valish}{}
+    \]
+
+  \end{description}
+
+  \caption{Syntax and typing rules of the $\llib$-calculus}
   \label{fig:llib}
-  \caption{The $\llib$ calculus}
 \end{figure}
 
+
 \subsection{Suspensions versus values}
 
-\subsection{Partial linking and canonical forms}
-And the revised version:
-\[\begin{array}{rcl}
-  M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
-  R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
-  e &::=& ... ~|~ \lib{M} ~|~ \use{R}
-\end{array}\]
+Careful inspection of Figure \ref{fig:llib} reveals the unusual judgment $e
+\valish$. This is meant to convey that $e$ is close enough to being a value as
+makes no difference. The troubling rule here (the reason we don't just call it
+$e \isvalue$) is the axiom $\lib{L} \valish$, which puts no constraints on the
+form of $L$. We'll see why this is acceptable later; for now, $e \valish$ can be
+read as if it said ``$e$ is a value''.
 
-\section{Extended CAM}
+$e \valish$ notably makes an appearance as a premise of the $\up{\text{I}}$
+rule:
+\[
+\infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
+  e \valish &
+  \Psi;\D;\ecx \ent e \isa \tau}
+\]
 
-\section{\bs{Implementation}}
-
-\bs{This entire section is speculative.}
+In contrast with the adjoint calculus presented so far, the $\llib$-calculus
+requires that in the library $\code{e}$, the enclosed term $e$ be a value.
+Without this constraint, we are forced into an ugly choice: either evaluating a
+library term $L$ may involve evaluating embedded terms $e$, bringing back the
+danger of unrestricted side-effects during linking; or, we must understand
+$\code{e}$ as a \emph{suspension} that delays evaluating $e$ until it is
+extracted via $\ms{use}$. The former is clearly unacceptable. The latter is a
+principled solution, but fails to capture the semantics of real-world libraries.
+We therefore add the $e \valish$ restriction, on the grounds that it better
+models real-world semantics at a neglible cost to expressivity.
+% TODO: footnote re if you want suspensions, just use a function
 
 
-\section{Bibliography}
+\subsection{Partial linking and hereditary substitution}
+
+As yet we have not presented dynamic semantics for the $\llib$-calculus. The
+primary issue we face in constructing such a semantics is accounting for partial
+linking: the ability to link a library with multiple dependencies against any
+one of them independently. Since we are representing libraries as functions of
+their dependencies, this reduces to the problem of \emph{partial evaluation}:
+reducing a function applied to some known and some unknown arguments to a
+function of only the unknown arguments.
+
+% \[\begin{array}{rcl}
+%   M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
+%   R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
+%   e &::=& ... ~|~ \lib{M} ~|~ \use{R}
+% \end{array}\]
+
+% Consider a library $L \isa I_1 \to I_2 \to I_3$ with two dependencies,
+% $I_1$ and $I_2$. Syntactically we treat this as a curried function of two
+% arguments, which requires it to be applied to its dependencies in order, but we
+% would like to be able to apply it to either dependency without yet having the
+% other, and still reduce the resulting term. In other words, given some $L_2 \isa
+% I_2$,
+% \[ \lam{u}{I_1}{L \ap u \ap L_2} \]
+% should be a reducible expression!
+
+% The ability to reduce a partially applied function in this manner is known in
+% the field of compiler optimization as \emph{partial evaluation}. 
+
+Partial evaluation is usually considered in the context of compiler
+optimization, but unfortunately we do not have the luxury of treating it as a
+mere optimization. Luckily, there is a standard technique for achieving this,
+known as \emph{hereditary substitution}. Hereditary substitution can intuitively
+be thought of as keeping all terms ``as normalized as possible given their free
+variables'' at all times. As such, all the actual work of reduction in a system
+of hereditary substitution occurs during substitution---when we eliminate free
+variables.
+
+Hereditary substitution requires separating the terms being dealt with (in our
+case, libraries) into ``canonical'' and ``atomic'' forms. We give the splitting
+of libraries $L$ into canonical $M$ and atomic $R$ in Figure \ref{fig:hsubst},
+and the corresponding changes required in other parts of the $\llib$-calculus
+syntax. Canonical forms consist of introduction forms ($\lam{u}{I}{M}$,
+$\<M,M\>$, $\code{e}$) and embedded atomic forms ($\at{R}$). Atomic forms
+consist of a series of elimination forms ($R \ap M$, $\proj{i}{M}$) applied to a
+``head'' variable ($u$). Directly replacing this head variable with a canonical
+term, as in na\"ive substitution, would be syntactically invalid. Thus, only
+irreducible uses of elimination forms are expressible. Hereditary substitution
+is the algorithm by which we replace variables without violating this syntactic
+constraint, and its rules are also given in Figure \ref{fig:hsubst}.
+
+\begin{figure}[p]
+  \centering
+  \begin{description}
+    \item[Modified syntax:]
+      \[\begin{array}{rcl}
+        M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
+        R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
+        e &::=& ... ~|~ \lib{M} ~|~ \use{R}
+      \end{array}\]
+
+
+    \item[Modified typing judgments:]\hfill\\
+      $\Psi;\D \ent L \isa I$ splits into $\Psi;\D \ent M \isa I$ and $\Psi;\D
+      \ent R \isa I$\\
+      $e \valish$ is replaced by $e \isvalue$
+
+    \item[Modified typing rules:]
+      \[
+      \infer{\Psi;\D;\G \ent \lib{M} \isa \dn{I}}{\Psi;\D \ent M \isa I} \qquad
+      \infer{\Psi;\D;\G \ent \use{R} \isa \tau}{\Psi;\D \ent R \isa \up{\tau}}
+      \]
+
+      \[
+      \infer{\Psi;\D \ent \at{R} \isa I}{\Psi;\D \ent R \isa I} \qquad
+      \infer{\Psi;\D,u \of I,\D' \ent u \isa I}{} \qquad
+      \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
+        e \isvalue &
+        \Psi;\D;\ecx \ent e \isa \tau}
+      \]\[
+      \infer{\Psi;\D \ent \lam{u}{I_1}{M} \isa I_1 \to I_2}{
+        \Psi;\D, u \of I_1 \ent M \isa I_2}
+      \qquad
+      \infer{\Psi;\D \ent R \ap M \isa I_2}{
+        \Psi;\D \ent R \isa I_1 \to I_2 &
+        \Psi;\D \ent M \isa I_1}
+      \]\[
+      \infer{\Psi;\D \ent \<M_1, M_2\> \isa I_1 \x I_2}{
+        \Psi;\D \ent M_1 \isa I_1 &
+        \Psi;\D \ent M_2 \isa I_2} \qquad
+      \infer{\Psi;\D \ent \proj{i}{R} \isa I_i}{
+        \Psi;\D \ent R \isa I_1 \x I_2}
+      \]
+
+      \[
+      \infer{\lam{x}{\tau}{e} \isvalue}{} \qquad
+      \infer{\Lam{\alpha}{e} \isvalue}{} \qquad
+      \infer{\roll{\alpha}{\tau} \isvalue}{} \qquad
+      \infer{\lib{M} \isvalue}{}
+      \]
+
+    \item[Substitution judgments:] \ 
+      $\sub{M}{u}{M} \to M$, \ $\sub{M}{u}{R} \to M$, \ $\sub{M}{u}{e} \to e$
+
+    \item[Substitution rules:]
+      \[
+      \infer{\sub{M}{u}{\at{R}} \to N}{\sub{M}{u}{R} \to N} \qquad
+      \infer{\sub{M}{u}{\code{e}} \to \code{e'}}{
+        \sub{M}{u}{e} \to e'}
+      \]\[
+      \infer{\sub{M}{u}{\lam{v}{I}{N}} \to \lam{v}{I}{N'}}{
+        \sub{M}{u}{N} \to N' &
+        (u \ne v)} \qquad
+      \infer{\sub{M}{u}{\<M_1, M_2\>} \to \<M_1', M_2'\>}{
+        \sub{M}{u}{M_1} \to M_1' &
+        \sub{M}{u}{M_1} \to M_2'}
+      \]
+
+      \[
+      \infer{\sub{M}{u}{u} \to M}{} \qquad
+      \infer{\sub{M}{u}{v} \to \at{v}}{(u \ne v)}
+      \]\[
+      \infer{\sub{M}{u}{R \ap N} \to \at{R' \ap N'}}{
+        \sub{M}{u}{R} \to \at{R'} &
+        \sub{M}{u}{N} \to N'}
+      \qquad
+      \infer{\sub{M}{u}{\proj{i}{R}} \to \proj{i}{R'}}{
+        \sub{M}{u}{R} \to \at{R'}
+      }
+      \]\[
+      \infer{\sub{M}{u}{R \ap N} \to O'}{
+        \sub{M}{u}{R} \to \lam{v}{I}{O} &
+        \sub{M}{u}{N} \to N' &
+        \sub{N}{v}{O} \to O'}
+      \qquad
+      \infer{\sub{M}{u}{\proj{i}{R}} \to M_i}{
+          \sub{M}{u}{R} \to \<M_1, M_2\>}
+      \]
+
+      \[
+      \infer{\sub{M}{u}{\lib{N}} \to \lib{N'}}{
+        \sub{M}{u}{N} \to N'}
+      \qquad
+      \infer{\sub{M}{u}{\use{R}} \to \use{R'}}{
+        \sub{M}{u}{R} \to \at{R'}}
+      \qquad
+      \infer{\sub{M}{u}{\use{R}} \to e}{\sub{M}{u}{R} \to \code{e}}
+      \]
+
+      (All other $\sub{M}{u}{e} \to e$ rules just distribute the substitution
+      across subexpressions.)
+
+      % \[
+      % \infer{\sub{M}{u}{x} \to x}{} \qquad
+      % \infer{\sub{M}{u}{\lam{x}{\tau}{e}} \to \lam{x}{\tau}{e'}}{
+      %   \sub{M}{u}{e} \to e'} \qquad
+      % \infer{\sub{M}{u}{e_1 \ap e_2} \to e_1' \ap e_2'}{
+      %   \sub{M}{u} e_1 \to e_1' &
+      %   \sub{M}{u} e_2 \to e_2'}
+      % \]\[
+      % \infer{\sub{M}{u}{\Lam{\alpha}{e}} \to \Lam{\alpha}{e'}}{
+      %   \sub{M}{u}{e} \to e'} \qquad
+      % \infer{\sub{M}{u}{\Ap{e}{\tau}} \to \Ap{e'}{\tau}}{
+      %   \sub{M}{u}{e} \to e'}
+      % \qquad
+      % \infer{\sub{M}{u}{\roll{\alpha}{\tau}{e}} \to \roll{\alpha}{\tau}{e'}}{
+      %   \sub{M}{u}{e} \to e'} \qquad
+      % \infer{\sub{M}{u}{\unroll{e}} \to \unroll{e'}}{
+      %   \sub{M}{u}{e} \to e'}
+      % \]
+
+  \end{description}
+
+  \caption{Modified $\llib$-calculus using hereditary substition}
+  \label{fig:hsubst}
+\end{figure}
+
+The translation from the original $\llib$-calculus into the form needed for
+hereditary substitution can be accomplished without much
+difficulty\footnote{\bs{Translation to be given in full thesis.}}, and it is
+this translation that justifies the laxness of the judgment $e \valish$.
+Post-translation, $\lib{L}$ becomes $\lib{M}$, and thanks to the syntactic
+restrictions of hereditary substitution, $M$ is guaranteed not to require
+further reduction (modulo containing some free variables). In light of this we
+rename the judgment to $e \isvalue$.
+
+\subsection{Dynamic semantics}
+
+Having defined hereditary substitution we can proceed to define a full dynamic
+semantics for the modified $\llib$-calculus, given in Figure \ref{fig:dynsem}.
+
+\begin{figure}[h]
+  \centering
+  \begin{description}
+  \item[Judgments:] $e \step e$
+  \item[Rules:]
+    \[
+    \infer{e_1 \ap e_2 \step e_1' \ap e_2}{e_1 \step e_1'} \qquad
+    \infer{e_1 \ap e_2 \step e_1 \ap e_2'}{e_1 \isvalue & e_2 \step e_2'} \qquad
+    \infer{(\lam{x}{\tau}{e_1}) \ap e_2 \step \sub{e_2}{x}{e_1}}{}
+    \]\[
+    \infer{\<e_1, e_2\> \step \<e_1', e_2\>}{e_1 \step e_1'} \qquad
+    \infer{\<e_1, e_2\> \step \<e_1, e_2'\>}{e_1 \isvalue & e_2 \step e_2'} \qquad
+    \infer{\proj{i}{e} \step \proj{i}{e'}}{e \step e'} \qquad
+    \infer{\proj{i}{\<e_1, e_2\>} \step e_i}{e_1 \isvalue & e_2 \isvalue}
+    \]\[
+    \infer{\Ap{e}{\tau} \step \Ap{e'}{\tau}}{e \step e'} \qquad
+    \infer{\Ap{\Lam{\alpha}{e}}{\tau} \step \sub{\tau}{\alpha}{e}}{}
+    \]\[
+    \infer{\roll{\alpha}{\tau}{e} \step \roll{\alpha}{\tau}{e'}}{e \step e'} \qquad
+    \infer{\unroll{e} \step \unroll{e'}}{e \step e'} \qquad
+    \infer{\unroll{(\roll{\alpha}{\tau}{e})} \step e}{e \isvalue}
+    \]\[
+    \infer{\load{u}{e_1}{e_2} \step \load{u}{e_1'}{e_2}}{e_1 \step e_1'} \qquad
+    \infer{\load{u}{\lib{M}}{e_2} \step e_2'}{\sub{M}{u}{e_2} \to e_2'}
+    \]
+  \end{description}
+  \caption{Dynamic semantics of $\llib$-calculus with hereditary substitution}
+  \label{fig:dynsem}
+\end{figure}
+
+\bs{Proofs of progress and preservation will be given in full thesis.}
+
+
+\newcommand{\camlib}{CAM\ensuremath{^{\text{lib}}}}
+\section{\camlib{}}
+
+The ``Categorical Abstract Machine'', or CAM, is a simple abstract machine used
+as a compilation target for $\lambda$-calculi and other functional languages. We
+extend a simplified version of the CAM with instructions that implement our
+hereditary-substitution library operations. Efficient implementation requires
+careful use of explicit substitutions to avoid deep-copying. \bs{Details will be
+  in full thesis.}
+
+\section{Implementation}
+
+We have implemented, in Standard ML, a typechecker and compiler for the
+$\llib$-calculus, translating through the $\llib$-calculus with hereditary
+substitution, targetting the \camlib{}. We have also implemented a bytecode
+interpreter for the \camlib{} (written in C). \bs{Link to source code and
+  examples will be included in full thesis. Current work may be found at
+  \url{https://github.com/rntz/ttol}.}
+
+
+\bibliographystyle{plain}
+\bibliography{foo}
 
 \end{document}
