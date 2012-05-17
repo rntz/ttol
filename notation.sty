@@ -3,6 +3,7 @@
 \newcommand{\step}{\mapsto}
 
 \newcommand{\llib}{\ensuremath{\lambda^{\ms{lib}}}}
+\newcommand{\llhs}{\ensuremath{\llib_{\ms{hs}}}}
 
 \newcommand{\binder}[2]{#1 .\: #2}
 \newcommand{\bindtwo}[3]{\binder{#1\,#2}{#3}}
@@ -57,11 +58,6 @@
 \newcommand{\ebox}[1]{\ms{box}\:{#1}}
 \newcommand{\letbox}[3]{\leter{let}{\ebox{#1}}{#2}{#3}}
 
-% \newcommand{\Ginv}[1]{\fG^{-1}\,{#1}}
-% \newcommand{\Gbox}[1]{\fG{#1}}
-% \newcommand{\Fbox}[1]{\fF{#1}}
-% \newcommand{\letF}[3]{\leter{let}{\Fbox{#1}}{#2}{#3}}
-
 \newcommand{\subn}[2]{[{#1}]\,{#2}}
 \newcommand{\sub}[3]{\subn{{#1}/{#2}}{#3}}
 
@@ -69,3 +65,14 @@
 \newcommand{\isiface}{~\ms{iface}}
 \newcommand{\valish}{~\ms{valish}}
 \newcommand{\isvalue}{~\ms{value}}
+\newcommand{\isval}{\isvalue}
+
+% rule names
+\newcommand{\dnI}{\dn{\text{I}}}
+\newcommand{\dnE}{\dn{\text{E}}}
+\newcommand{\upI}{\up{\text{I}}}
+\newcommand{\upE}{\up{\text{E}}}
+
+% translation to lambda^lib_hs
+\newcommand{\trans}[1]{\ulcorner\!{#1}\!\urcorner}
+%\newcommand{\trans}[1]{\ensuremath{\mathcal{T}(#1)}}
