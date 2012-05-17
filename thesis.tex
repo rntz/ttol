@@ -19,7 +19,7 @@
 
 \newcommand{\todo}[1]{\textcolor{red}{\small TODO: #1}}
 
-\title{A Type Theory for Linking\\{\large (extended abstract)}}
+\title{A Type Theory for Linking\\{\large (rough draft)}}
 \author{Michael Arntzenius\\advised by Karl Crary}
 
 
@@ -161,10 +161,10 @@ arbitrary side-effects (eg. nontermination or malicious behavior), which is
 clearly undesirable.
 
 Second, it makes \emph{partial linking}, where we link a library against just
-one of its several dependencies, impractical. Consider that curried functions
+one of its several dependencies, impossible. Consider that curried functions
 must receive their arguments \emph{in order}; given $f \isa \tau_1 \to \tau_2
 \to \tau_3$ and $y \isa \tau_2$, I cannot apply $f$ to $y$ without also having
-some $x \of \tau_1$. I can get around this by creating a wrapper function:
+some $x \of \tau_1$. I can achieve this by creating a wrapper function:
 \[ \lam{x}{\tau_1}{f \ap x \ap y} \]
 
 However, this merely delays the actual call to $f$ until the first argument $x$
@@ -183,8 +183,6 @@ To deal with dependencies, we turn to Benton and Wadler's \emph{adjoint
 $\lambda$-calculi that can be used to ``encode'' both modal logic and other
 logics such as intuitionistic linear logic. Here we concern ourselves only with
 its relation to modal logic.
-
-\newcommand{\trans}[1]{\ulcorner\!{#1}\!\urcorner}
 
 The adjoint calculus ``splits'' modal logic into two layers, an ``upper'' and a
 ``lower''. The upper layer corresponds to necessary or mobile things---for us,
@@ -213,17 +211,17 @@ $\llib$-calculus.
     \ $\D;\G \ent e \isa \tau$
   \item[Rules:]
     \[
-    \infer[\up{\text{I}}]{\D \ent \code{e} \isa \up{\tau}}{
+    \infer[\upI]{\D \ent \code{e} \isa \up{\tau}}{
       \D;\ecx \ent e \isa \tau}
     \qquad
-    \infer[\up{\text{E}}]{\D;\G \ent \use{L} \isa \tau}{
+    \infer[\upE]{\D;\G \ent \use{L} \isa \tau}{
       \D \ent L \isa \up{\tau}}
     \]
     \[
-    \infer[\dn{\text{I}}]{\D;\G \ent \lib{L} \isa \dn{I}}{
+    \infer[\dnI]{\D;\G \ent \lib{L} \isa \dn{I}}{
       \D \ent L \isa I}
     \qquad
-    \infer[\dn{\text{E}}]{\D;\G \ent \load{u}{e_1}{e_2} \isa \tau}{
+    \infer[\dnE]{\D;\G \ent \load{u}{e_1}{e_2} \isa \tau}{
       \D;\G \ent e_1 \isa \dn{I} &
       \D,u \of I;\G \ent e_2 \isa \tau}
     \]
@@ -235,10 +233,10 @@ $\llib$-calculus.
 \end{figure}
 
 In place of the singular modal operator $\nec$, we have two operators. The
-first, $\up{\tau} \in I$, projects from the term to the library layer; it is the
+first, $\up{\tau} \in I$, injects terms into the library layer; it is the
 interface of a library containing code of type $\tau$. The second, $\dn{I}$,
-projects from the library to the term layer; it is the type of a run-time
-reference to a library with interface $I$. Thus the modal $\nec \tau$ becomes
+injects libraries into the term layer; it is the type of a run-time reference to
+a library with interface $I$. Thus the modal $\nec \tau$ becomes
 $\dn{\up{\tau}}$: the type of a run-time reference to a library containing code
 of type $\tau$.
 
@@ -246,40 +244,41 @@ As we have two layers, we also have two contexts: $\D$ for library variables and
 $\G$ for term variables. Terms may depend on libraries, so the typing judgment
 $\D;\G \ent e \isa \tau$ for terms involves both contexts. However, the typing
 judgment $\D \ent L \isa I$ for libraries lacks a term context, preventing
-libraries from depending on arbitrary run-time values. Thus to embed a library
-in a program via the $\ms{lib}$ operator, we must throw away our $\G$ context,
-as in the $\dn{\text{I}}$ rule. Similarly, to embed code into a library, it must
-typecheck with an empty term context, as in the $\up{\text{I}}$ rule. The
-$\up{\text{E}}$ rule is straightforward: if we have a library $L \isa \up{\tau}$
+libraries from depending on arbitrary run-time values. Thus, to embed code into
+a library via the $\ms{code}$ operator (the $\upI$ rule), it must typecheck with
+an empty term context; and when embedding a library in a program via the
+$\ms{lib}$ operator (the $\dnI$ rule), we throw away our $\G$ context. The
+$\upE$ rule is straightforward: if we have a library $L \isa \up{\tau}$
 containing code of type $\tau$, we can \ms{use} it within a program to retrieve
-the embedded $\tau$. $\dn{\text{E}}$ is only slightly more subtle: given $e_1
-\isa \dn{I}$, a reference to a library with interface $I$, we can bind a library
-variable $u \of I$ to the library it refers to to.
+the embedded $\tau$. $\dnE$ is only slightly more subtle: given $e_1 \isa
+\dn{I}$, which evaluates to a reference to a library with interface $I$, we can
+bind a library variable $u \of I$ to the library it refers to to.
+
+% TODO: aside re why \dnE{} has to be a large elim rule?
 
 
 \subsubsection{Extending the library layer}
 
-The only library-layer operator \emph{needed} to encode modal $\nec$ is
+The only library-layer type operator \emph{needed} to encode modal $\nec$ is
 $\up{\tau}$. But having separated the two layers, we are free to add other
-connectives to $I$. It is this additional expressiveness that suits the adjoint
-calculus to our purposes: library-layer connectives let us express the the
-``super-structure'' of a library, beyond merely the type of the code it
-contains. In particular, we can express dependencies as \emph{library-layer}
-functions, distinct from ordinary term-layer functions:
+operators to $I$. It is this expressiveness that suits the adjoint calculus to
+our purposes: library-layer operators let us express the the ``super-structure''
+of a library, beyond merely the type of the code it contains, in a way that
+modal logic cannot. In particular, we can express dependencies as
+\emph{library-layer} functions, distinct from ordinary term-layer functions:
 \begin{align*}
   I &::= ... ~|~ I \to I\\
   L &::= ... ~|~ \lam{u}{I}{L} ~|~ L \ap L
 \end{align*}
-This cleanly separates the library-level computation of linking a library
-against its dependencies from ordinary run-time function application. We can
-thus avoid arbitrary link-time side-effects simply by not introducing any
-side-effectful operations to the library layer. Partial linking, as we shall
-see, is more complicated, but still doable.
+This cleanly separates the library-level (\emph{link-time}) computation of
+linking a library against its dependencies from ordinary (\emph{run-time})
+function application. We can thus avoid arbitrary link-time side-effects by
+simply not introducing any side-effectful operations to the library layer.
+Partial linking, as we shall see, is more complicated, but still feasible.
 
-In general, by adding library layer connectives, we express that these
-correspond to the structure of the library \emph{itself}, not the code it
-contains. For a concrete example of this distinction, let us first add library
-products:
+In general, by adding library layer operators, we express that these correspond
+to the structure of the library \emph{itself}, not the code it contains. For a
+concrete example of this distinction, let us first add library products:
 \begin{align*}
   I &::= ... ~|~ I \x I\\
   L &::= ... ~|~ \<L, L\> ~|~ \proj{i}{L}
@@ -316,48 +315,75 @@ product).
 
 Before presenting the full $\llib$-calculus, one complication remains. The
 adjoint calculus we have presented so far lacks parametric polymorphism, the
-ability to universally quantify over types. Adding support for this is
-straightforward syntactically, but requires adding a new context $\Psi$ for type
-variables, which raises the question of how this context behaves in our
-two-layer system. Is $\Psi$ discarded like $\G$ when we move into the library
-layer, or preserved like $\D$? For the sake of expressivity, we'd like $\Psi$ to
-be preserved, otherwise it becomes impossible to implement a function with a
-type such as $\fa{\alpha}{\dn{\up{\alpha}} \to \alpha}$. Since types $\tau$ are
-conceptually lower-layer things, however, it's not immediately obvious that this
-is safe. Luckily for us, it turns out that it is.\footnote{\bs{Explanation and
-    proof to be given in full thesis.}}
+ability to universally quantify over types. Adding polymorphism introduces a new
+context $\Psi$ for type variables (see Figure \ref{fig:polymorph}), which raises
+the question of how this context should behave in our two-layer system: Is
+$\Psi$ discarded like $\G$ when we move into the library layer, or preserved
+like $\D$? That is, is the typing judgment for libraries of the form $\Psi;\D
+\ent L \isa I$ or does it remain $\D \ent L \isa I$?
+
+For the sake of expressivity, we'd like to choose the former and preserve $\Psi$
+in the library layer, otherwise it becomes impossible to implement a function
+with a type such as $\fa{\alpha}{\dn{\up{\alpha}} \to \alpha}$. Since types
+$\tau$ are conceptually lower-layer things, however, it's not immediately
+obvious that this is safe. Luckily it turns out that it is.
+\todo{Forward-reference safety theorems.}
+
+\todo{Need advice on what to say here. Should we discuss in depth the
+  implications for implementations re: type-passing \& monomorphism, or merely
+  note them in passing?}
+
+% NOTE: I think that actually the reason this is a sticking point is because
+% polymorphism *IS* one of those things where it's not clear whether it should
+% be implemented in the library or term layers. eg. you can make \Lam a
+% library-layer operator, which makes type-specialization a link-time operation:
+% this corresponds, I think, to monomorphisation.
+%
+% Worth at least noting this as future work.
+
+\begin{figure}
+  \centering
+  \[\begin{array}{rrcl}
+    \text{type contexts} & \Phi &::=& \ecx ~|~ \Phi, \alpha\\
+    \text{types} & \tau &::=& ... ~|~ \alpha\\
+    \text{terms} & e &::=& ... ~|~ \Lam{\alpha}{e} ~|~ \Ap{e}{\tau}
+  \end{array}\]
+  \caption{Adding polymorphism to the adjoint calculus}
+  \label{fig:polymorph}
+\end{figure}
 
 
 \section{The $\llib$-calculus}
 
 The $\llib$ calculus is a polymorphic adjoint calculus with functions and
 products at the library layer, and functions, universals, and recursive types at
-the term layer. The library-layer connectives we have discussed already; the
-term-layer type operators were chosen to make the term layer Turing-complete
-with a minimum of bother, the better to model real programming languages and so
-serve as a proof of concept. The syntax and typing rules are given in Figure
-\ref{fig:llib}.
+the term layer. The library operators we have discussed already; the term
+operators were chosen to make the term layer Turing-complete with a minimum of
+bother, the better to model a real programming language and so serve as a proof
+of concept. The syntax and typing rules are given in Figure \ref{fig:llib}.
 
 \begin{figure}[p]
   \centering
   \begin{description}
   \item[Syntax:]
-    \[\begin{array}{rcl}
-      I &::=& \up{\tau} ~|~ I \to I ~|~ I \x I\\
-      \tau &::=&  \dn{I} ~|~ \tau \to \tau ~|~ \alpha ~|~ \fa{\alpha}{\tau}
+    \[\begin{array}{rrcl}
+      \text{interfaces} & I &::=& \up{\tau} ~|~ I \to I ~|~ I \x I\\
+      \text{types} & \tau &::=&
+      \dn{I} ~|~ \tau \to \tau ~|~ \alpha ~|~ \fa{\alpha}{\tau}
       ~|~ \trec{\alpha}{\tau}\\
-      L &::=& u ~|~ \lam{u}{I}{L} ~|~ L \ap L ~|~ \<L,L\> ~|~ \proj{i}{L}
+      \text{libraries} & L &::=&
+      u ~|~ \lam{u}{I}{L} ~|~ L \ap L ~|~ \<L,L\> ~|~ \proj{i}{L}
       ~|~ \code{e}\\
-      e &::=& x ~|~ \lam{x}{\tau}{e} ~|~ e \ap e
+      \text{terms} & e &::=&
+      x ~|~ \lam{x}{\tau}{e} ~|~ e \ap e
       ~|~ \Lam{\alpha}{e} ~|~ \Ap{e}{\tau}
       ~|~ \roll{\alpha}{\tau}{e} ~|~ \unroll{e}\\
-      &~|~& \lib{L} ~|~ \use{L} ~|~ \load{u}{e}{e}
+      &&~|~& \lib{L} ~|~ \use{L} ~|~ \load{u}{e}{e}
     \end{array}\]
   \item[Judgments:]\[
     \begin{array}[]{lll}
-      \Psi \ent I \isiface &\quad \Psi;\D \ent L \isa I\\
-      \Psi \ent \tau \istype &\quad \Psi;\D;\G \ent e \isa \tau
-      &\quad e \valish
+      \Psi \ent I \isiface &\quad \Psi;\D \ent L \isa I &\quad L \isval\\
+      \Psi \ent \tau \istype &\quad \Psi;\D;\G \ent e \isa \tau &\quad e \isval
     \end{array}\]
   \item[Rules:]
     \[
@@ -399,7 +425,7 @@ serve as a proof of concept. The syntax and typing rules are given in Figure
       \Psi;\D \ent L \isa I_1 \x I_2}
     \]\[
     \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
-      e \valish &
+      e \isval &
       \Psi;\D;\ecx \ent e \isa \tau} \qquad
     \infer{\Psi;\D;\G \ent \use{L} \isa \tau}{
       \Psi;\D \ent L \isa \up{\tau}}
@@ -435,10 +461,16 @@ serve as a proof of concept. The syntax and typing rules are given in Figure
     \]
 
     \[
-    \infer{\lam{x}{\tau}{e} \valish}{} \qquad
-    \infer{\Lam{\alpha}{e} \valish}{} \qquad
-    \infer{\roll{\alpha}{\tau}{e} \valish}{e \valish} \qquad
-    \infer{\lib{L} \valish}{}
+    \infer{\lam{x}{\tau}{e} \isval}{} \qquad
+    \infer{\Lam{\alpha}{e} \isval}{} \qquad
+    \infer{\roll{\alpha}{\tau}{e} \isval}{e \isval} \qquad
+    \infer{\lib{L} \isval}{L \isval}
+    \]
+    \[
+    \infer{u \isval}{} \qquad
+    \infer{\lam{u}{I}{L} \isval}{} \qquad
+    \infer{\<L_1, L_2\> \isval}{L_1 \isval & L_2 \isval} \qquad
+    \infer{\code{e} \isval}{e \isval}
     \]
 
   \end{description}
@@ -451,14 +483,13 @@ serve as a proof of concept. The syntax and typing rules are given in Figure
 \subsection{Suspensions versus values}
 
 Careful inspection of Figure \ref{fig:llib} reveals the unusual judgment $e
-\valish$. This is meant to convey that $e$ is close enough to being a value as
-makes no difference. The troubling rule here (the reason we don't just call it
-$e \isvalue$) is the axiom $\lib{L} \valish$, which puts no constraints on the
-form of $L$. We'll see why this is acceptable later; for now, $e \valish$ can be
-read as if it said ``$e$ is a value''.
+\valish$. This is meant to convey that $e$ is close enough to a value as makes
+no difference. The troubling rule here (the reason we don't just call it $e
+\isval$) is the axiom $\lib{L} \valish$, which puts no constraints on the form
+of $L$. We'll see why this is acceptable later; for now, $e \valish$ may be read
+as if it said ``$e$ is a value''.
 
-$e \valish$ notably makes an appearance as a premise of the $\up{\text{I}}$
-rule:
+$e \valish$ notably makes an appearance as a premise of the $\upI$ rule:
 \[
 \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
   e \valish &
@@ -467,26 +498,29 @@ rule:
 
 In contrast with the adjoint calculus presented so far, the $\llib$-calculus
 requires that in the library $\code{e}$, the enclosed term $e$ be a value.
-Without this constraint, we are forced into an ugly choice: either evaluating a
-library term $L$ may involve evaluating embedded terms $e$, bringing back the
-danger of unrestricted side-effects during linking; or, we must understand
-$\code{e}$ as a \emph{suspension} that delays evaluating $e$ until it is
-extracted via $\ms{use}$. The former is clearly unacceptable. The latter is a
-principled solution, but fails to capture the semantics of real-world libraries.
-We therefore add the $e \valish$ restriction, on the grounds that it better
-models real-world semantics at a neglible cost to expressivity.
+Without this constraint, we are forced to make an ugly choice: either evaluating
+a library term $L$ may involve evaluating embedded terms $e$, bringing back the
+danger of unrestricted side-effects during linking; or, we must take $\code{e}$
+to be a \emph{suspension} that delays evaluating $e$ until it is extracted
+via $\ms{use}$. The former is clearly unacceptable. The latter is a principled
+solution, but fails to capture the semantics of real-world libraries. We
+therefore add the $e \valish$ restriction, on the grounds that it better models
+real-world semantics at a neglible cost to expressivity.
 % TODO: footnote re if you want suspensions, just use a function
 
 
-\subsection{Partial linking and hereditary substitution}
+\subsection{Dynamic semantics, partial linking, and hereditary substitution}
 
 As yet we have not presented dynamic semantics for the $\llib$-calculus. The
-primary issue we face in constructing such a semantics is accounting for partial
+primary difficulty in constructing such a semantics is accounting for partial
 linking: the ability to link a library with multiple dependencies against any
 one of them independently. Since we are representing libraries as functions of
 their dependencies, this reduces to the problem of \emph{partial evaluation}:
 reducing a function applied to some known and some unknown arguments to a
 function of only the unknown arguments.
+
+% The insight is that "function applied to some known & some unknown args" can
+% be reduced to "term with substitutions for some but not all of its free vars"
 
 % \[\begin{array}{rcl}
 %   M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
@@ -515,36 +549,47 @@ variables'' at all times. As such, all the actual work of reduction in a system
 of hereditary substitution occurs during substitution---when we eliminate free
 variables.
 
-Hereditary substitution requires separating the terms being dealt with (in our
-case, libraries) into ``canonical'' and ``atomic'' forms. We give the splitting
-of libraries $L$ into canonical $M$ and atomic $R$ in Figure \ref{fig:hsubst},
-and the corresponding changes required in other parts of the $\llib$-calculus
-syntax. Canonical forms consist of introduction forms ($\lam{u}{I}{M}$,
-$\<M,M\>$, $\code{e}$) and embedded atomic forms ($\at{R}$). Atomic forms
-consist of a series of elimination forms ($R \ap M$, $\proj{i}{M}$) applied to a
-``head'' variable ($u$). Directly replacing this head variable with a canonical
-term, as in na\"ive substitution, would be syntactically invalid. Thus, only
-irreducible uses of elimination forms are expressible. Hereditary substitution
-is the algorithm by which we replace variables without violating this syntactic
-constraint, and its rules are also given in Figure \ref{fig:hsubst}.
+Hereditary substitution separates terms into ``canonical'' and ``atomic'' forms.
+In our case, we separate libraries $L$ into canonical $M$ and atomic $R$. We
+present the resulting $\llhs$-calculus. Canonical libraries $M$ are either
+introduction forms ($\lam{u}{I}{M}$, $\<M,M\>$, $\code{e}$) or embedded atomic
+forms ($\at{R}$). Atomic forms $R$ consist of a series of elimination forms ($R
+\ap M$, $\proj{i}{M}$) applied to a ``head'' variable ($u$). Directly replacing
+this head variable with a canonical term, as in na\"ive substitution, would be
+syntactically invalid. Thus, only irreducible uses of elimination forms are
+expressible.
 
-\begin{figure}[p]
+Hereditary substitution is the algorithm by which we replace variables without
+violating this syntactic constraint, and its rules are given along with the
+dynamic semantics for the $\llhs$-calculus in Figure \ref{fig:llhsdynsem}.
+\todo{Explain that it subsumes evaluation rules for library level; progress \&
+  preservation become substitution lemmas.}
+
+Given this, the translation from the original $\llib$-calculus into $\llhs$ is
+easy to define, and it is this translation that justifies the laxness of the
+judgment $e \valish$. Post-translation, $\lib{L}$ becomes $\lib{M}$, and thanks
+to the syntactic restrictions of hereditary substitution, $M$ is guaranteed not
+to require further reduction (modulo containing some free variables); so while
+$\lib{L}$ may not \emph{be} a value, it \emph{translates} to one.
+
+
+\begin{figure}
   \centering
   \begin{description}
-    \item[Modified syntax:]
-      \[\begin{array}{rcl}
+    \item[Syntax:]
+      \[\begin{array}{rrcl}
+        \text{canonical libraries} &
         M &::=& \at{R} ~|~ \lam{u}{I}{M} ~|~ \<M,M\> ~|~ \code{e}\\
-        R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
-        e &::=& ... ~|~ \lib{M} ~|~ \use{R}
+        \text{atomic libraries} & R &::=& u ~|~ R \ap M ~|~ \proj{i}{R}\\
+        \text{terms} & e &::=& ... ~|~ \lib{M} ~|~ \use{R}
       \end{array}\]
 
-
-    \item[Modified typing judgments:]\hfill\\
+    \item[Judgments:]\hfill\\
       $\Psi;\D \ent L \isa I$ splits into $\Psi;\D \ent M \isa I$ and $\Psi;\D
       \ent R \isa I$\\
-      $e \valish$ is replaced by $e \isvalue$
+      $e \valish$ is replaced by $e \isval$
 
-    \item[Modified typing rules:]
+    \item[Rules:]
       \[
       \infer{\Psi;\D;\G \ent \lib{M} \isa \dn{I}}{\Psi;\D \ent M \isa I} \qquad
       \infer{\Psi;\D;\G \ent \use{R} \isa \tau}{\Psi;\D \ent R \isa \up{\tau}}
@@ -554,7 +599,7 @@ constraint, and its rules are also given in Figure \ref{fig:hsubst}.
       \infer{\Psi;\D \ent \at{R} \isa I}{\Psi;\D \ent R \isa I} \qquad
       \infer{\Psi;\D,u \of I,\D' \ent u \isa I}{} \qquad
       \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
-        e \isvalue &
+        e \isval &
         \Psi;\D;\ecx \ent e \isa \tau}
       \]\[
       \infer{\Psi;\D \ent \lam{u}{I_1}{M} \isa I_1 \to I_2}{
@@ -572,133 +617,130 @@ constraint, and its rules are also given in Figure \ref{fig:hsubst}.
       \]
 
       \[
-      \infer{\lam{x}{\tau}{e} \isvalue}{} \qquad
-      \infer{\Lam{\alpha}{e} \isvalue}{} \qquad
-      \infer{\roll{\alpha}{\tau} \isvalue}{} \qquad
-      \infer{\lib{M} \isvalue}{}
+      \infer{\lam{x}{\tau}{e} \isval}{} \qquad
+      \infer{\Lam{\alpha}{e} \isval}{} \qquad
+      \infer{\roll{\alpha}{\tau} \isval}{} \qquad
+      \infer{\lib{M} \isval}{}
       \]
 
-    \item[Substitution judgments:] \ 
-      $\sub{M}{u}{M} \to M$, \ $\sub{M}{u}{R} \to M$, \ $\sub{M}{u}{e} \to e$
+    \item[Translation from \llib{}:] We define an operation $\trans{\_}$ that
+      takes libraries $L$ to canonical libraries $M$. We use library
+      substitution, defined in Figure \ref{fig:llhsdynsem}.
+      % TODO: insert ref to proof of substitution lemma.
+      \begin{align*}
+        \trans{I} &\in M\\
+        \trans{u} &= \at{u}\\
+        \trans{\lam{u}{I}{L}} &= \lam{u}{I}{\trans{L}}\\
+        \trans{\<L_1, L_2\>} &= \<\trans{L_1}, \trans{L_2}\>\\
+        \trans{L_1 \ap L_2} &=
+        \begin{cases}
+          M' & \text{if }\,\trans{L_1} = \lam{u}{I}{M}
+          \text{ and } \sub{\trans{L_2}}{u}{M} \to M'\\
+          \at{(R \ap \trans{L_2})} & \text{if }\,\trans{L_1} = \at{R}\\
+        \end{cases}\\
+        \trans{\proj{i}{L}} &=
+        \begin{cases}
+          M_i & \text{if }\,\trans{L} = \<M_1, M_2\>\\
+          \at{(\proj{i}{R})} & \text{if }\,\trans{L} = \at{R}
+        \end{cases}
+      \end{align*}
 
-    \item[Substitution rules:]
-      \[
-      \infer{\sub{M}{u}{\at{R}} \to N}{\sub{M}{u}{R} \to N} \qquad
-      \infer{\sub{M}{u}{\code{e}} \to \code{e'}}{
-        \sub{M}{u}{e} \to e'}
-      \]\[
-      \infer{\sub{M}{u}{\lam{v}{I}{N}} \to \lam{v}{I}{N'}}{
-        \sub{M}{u}{N} \to N' &
-        (u \ne v)} \qquad
-      \infer{\sub{M}{u}{\<M_1, M_2\>} \to \<M_1', M_2'\>}{
-        \sub{M}{u}{M_1} \to M_1' &
-        \sub{M}{u}{M_1} \to M_2'}
-      \]
-
-      \[
-      \infer{\sub{M}{u}{u} \to M}{} \qquad
-      \infer{\sub{M}{u}{v} \to \at{v}}{(u \ne v)}
-      \]\[
-      \infer{\sub{M}{u}{R \ap N} \to \at{R' \ap N'}}{
-        \sub{M}{u}{R} \to \at{R'} &
-        \sub{M}{u}{N} \to N'}
-      \qquad
-      \infer{\sub{M}{u}{\proj{i}{R}} \to \proj{i}{R'}}{
-        \sub{M}{u}{R} \to \at{R'}
-      }
-      \]\[
-      \infer{\sub{M}{u}{R \ap N} \to O'}{
-        \sub{M}{u}{R} \to \lam{v}{I}{O} &
-        \sub{M}{u}{N} \to N' &
-        \sub{N}{v}{O} \to O'}
-      \qquad
-      \infer{\sub{M}{u}{\proj{i}{R}} \to M_i}{
-          \sub{M}{u}{R} \to \<M_1, M_2\>}
-      \]
-
-      \[
-      \infer{\sub{M}{u}{\lib{N}} \to \lib{N'}}{
-        \sub{M}{u}{N} \to N'}
-      \qquad
-      \infer{\sub{M}{u}{\use{R}} \to \use{R'}}{
-        \sub{M}{u}{R} \to \at{R'}}
-      \qquad
-      \infer{\sub{M}{u}{\use{R}} \to e}{\sub{M}{u}{R} \to \code{e}}
-      \]
-
-      (All other $\sub{M}{u}{e} \to e$ rules just distribute the substitution
-      across subexpressions.)
-
-      % \[
-      % \infer{\sub{M}{u}{x} \to x}{} \qquad
-      % \infer{\sub{M}{u}{\lam{x}{\tau}{e}} \to \lam{x}{\tau}{e'}}{
-      %   \sub{M}{u}{e} \to e'} \qquad
-      % \infer{\sub{M}{u}{e_1 \ap e_2} \to e_1' \ap e_2'}{
-      %   \sub{M}{u} e_1 \to e_1' &
-      %   \sub{M}{u} e_2 \to e_2'}
-      % \]\[
-      % \infer{\sub{M}{u}{\Lam{\alpha}{e}} \to \Lam{\alpha}{e'}}{
-      %   \sub{M}{u}{e} \to e'} \qquad
-      % \infer{\sub{M}{u}{\Ap{e}{\tau}} \to \Ap{e'}{\tau}}{
-      %   \sub{M}{u}{e} \to e'}
-      % \qquad
-      % \infer{\sub{M}{u}{\roll{\alpha}{\tau}{e}} \to \roll{\alpha}{\tau}{e'}}{
-      %   \sub{M}{u}{e} \to e'} \qquad
-      % \infer{\sub{M}{u}{\unroll{e}} \to \unroll{e'}}{
-      %   \sub{M}{u}{e} \to e'}
-      % \]
-
+      % FIXME: add translation from \llib
   \end{description}
 
-  \caption{Modified $\llib$-calculus using hereditary substition}
-  \label{fig:hsubst}
+  \caption{Syntax \& typing rules of $\llhs$ (where they differ from $\llib$)
+    and translation from $\llib$}
+  \label{fig:llhs}
 \end{figure}
 
-The translation from the original $\llib$-calculus into the form needed for
-hereditary substitution can be accomplished without much
-difficulty\footnote{\bs{Translation to be given in full thesis.}}, and it is
-this translation that justifies the laxness of the judgment $e \valish$.
-Post-translation, $\lib{L}$ becomes $\lib{M}$, and thanks to the syntactic
-restrictions of hereditary substitution, $M$ is guaranteed not to require
-further reduction (modulo containing some free variables). In light of this we
-rename the judgment to $e \isvalue$.
-
-\subsection{Dynamic semantics}
-
-Having defined hereditary substitution we can proceed to define a full dynamic
-semantics for the modified $\llib$-calculus, given in Figure \ref{fig:dynsem}.
-
-\begin{figure}[h]
+
+\begin{figure}
   \centering
   \begin{description}
-  \item[Judgments:] $e \step e$
-  \item[Rules:]
+  \item[Judgments:]\hfill
+
+    \begin{tabular}{rl}
+      Library-layer:&
+      $\sub{M}{u}{M} \to M$, \ $\sub{M}{u}{R} \to M$, \ $\sub{M}{u}{e} \to e$\\
+      Term-layer:& $e \step e$
+    \end{tabular}
+
+  \item[Substitution rules:]
+    \[
+    \infer{\sub{M}{u}{\at{R}} \to N}{\sub{M}{u}{R} \to N} \qquad
+    \infer{\sub{M}{u}{\code{e}} \to \code{e'}}{
+      \sub{M}{u}{e} \to e'}
+    \]\[
+    \infer{\sub{M}{u}{\lam{v}{I}{N}} \to \lam{v}{I}{N'}}{
+      \sub{M}{u}{N} \to N' &
+      (u \ne v)} \qquad
+    \infer{\sub{M}{u}{\<M_1, M_2\>} \to \<M_1', M_2'\>}{
+      \sub{M}{u}{M_1} \to M_1' &
+      \sub{M}{u}{M_1} \to M_2'}
+    \]
+
+    \[
+    \infer{\sub{M}{u}{u} \to M}{} \qquad
+    \infer{\sub{M}{u}{v} \to \at{v}}{(u \ne v)}
+    \]\[
+    \infer{\sub{M}{u}{R \ap N} \to \at{R' \ap N'}}{
+      \sub{M}{u}{R} \to \at{R'} &
+      \sub{M}{u}{N} \to N'}
+    \qquad
+    \infer{\sub{M}{u}{\proj{i}{R}} \to \proj{i}{R'}}{
+      \sub{M}{u}{R} \to \at{R'}
+    }
+    \]\[
+    \infer{\sub{M}{u}{R \ap N} \to O'}{
+      \sub{M}{u}{R} \to \lam{v}{I}{O} &
+      \sub{M}{u}{N} \to N' &
+      \sub{N}{v}{O} \to O'}
+    \qquad
+    \infer{\sub{M}{u}{\proj{i}{R}} \to M_i}{
+      \sub{M}{u}{R} \to \<M_1, M_2\>}
+    \]
+
+    \[
+    \infer{\sub{M}{u}{\lib{N}} \to \lib{N'}}{
+      \sub{M}{u}{N} \to N'}
+    \qquad
+    \infer{\sub{M}{u}{\use{R}} \to \use{R'}}{
+      \sub{M}{u}{R} \to \at{R'}}
+    \qquad
+    \infer{\sub{M}{u}{\use{R}} \to e}{\sub{M}{u}{R} \to \code{e}}
+    \]
+
+    (All other $\sub{M}{u}{e} \to e$ rules just distribute the substitution
+    across subexpressions.)
+
+  \item[Evaluation rules:]
     \[
     \infer{e_1 \ap e_2 \step e_1' \ap e_2}{e_1 \step e_1'} \qquad
-    \infer{e_1 \ap e_2 \step e_1 \ap e_2'}{e_1 \isvalue & e_2 \step e_2'} \qquad
+    \infer{e_1 \ap e_2 \step e_1 \ap e_2'}{e_1 \isval & e_2 \step e_2'} \qquad
     \infer{(\lam{x}{\tau}{e_1}) \ap e_2 \step \sub{e_2}{x}{e_1}}{}
     \]\[
     \infer{\<e_1, e_2\> \step \<e_1', e_2\>}{e_1 \step e_1'} \qquad
-    \infer{\<e_1, e_2\> \step \<e_1, e_2'\>}{e_1 \isvalue & e_2 \step e_2'} \qquad
+    \infer{\<e_1, e_2\> \step \<e_1, e_2'\>}{e_1 \isval & e_2 \step e_2'} \qquad
     \infer{\proj{i}{e} \step \proj{i}{e'}}{e \step e'} \qquad
-    \infer{\proj{i}{\<e_1, e_2\>} \step e_i}{e_1 \isvalue & e_2 \isvalue}
+    \infer{\proj{i}{\<e_1, e_2\>} \step e_i}{e_1 \isval & e_2 \isval}
     \]\[
     \infer{\Ap{e}{\tau} \step \Ap{e'}{\tau}}{e \step e'} \qquad
-    \infer{\Ap{\Lam{\alpha}{e}}{\tau} \step \sub{\tau}{\alpha}{e}}{}
+    \infer{\Ap{(\Lam{\alpha}{e})}{\tau} \step \sub{\tau}{\alpha}{e}}{}
     \]\[
     \infer{\roll{\alpha}{\tau}{e} \step \roll{\alpha}{\tau}{e'}}{e \step e'} \qquad
     \infer{\unroll{e} \step \unroll{e'}}{e \step e'} \qquad
-    \infer{\unroll{(\roll{\alpha}{\tau}{e})} \step e}{e \isvalue}
+    \infer{\unroll{(\roll{\alpha}{\tau}{e})} \step e}{e \isval}
     \]\[
     \infer{\load{u}{e_1}{e_2} \step \load{u}{e_1'}{e_2}}{e_1 \step e_1'} \qquad
     \infer{\load{u}{\lib{M}}{e_2} \step e_2'}{\sub{M}{u}{e_2} \to e_2'}
     \]
   \end{description}
-  \caption{Dynamic semantics of $\llib$-calculus with hereditary substitution}
-  \label{fig:dynsem}
+
+  \caption{Dynamic semantics of $\llhs$}
+  \label{fig:llhsdynsem}
 \end{figure}
 
-\bs{Proofs of progress and preservation will be given in full thesis.}
+\todo{Write up proofs of progress and preservation.}
 
 
 \newcommand{\camlib}{CAM\ensuremath{^{\text{lib}}}}
@@ -708,19 +750,29 @@ The ``Categorical Abstract Machine'', or CAM, is a simple abstract machine used
 as a compilation target for $\lambda$-calculi and other functional languages. We
 extend a simplified version of the CAM with instructions that implement our
 hereditary-substitution library operations. Efficient implementation requires
-careful use of explicit substitutions to avoid deep-copying. \bs{Details will be
-  in full thesis.}
+careful use of explicit substitutions to avoid deep-copying. \todo{}
 
+\subsection{Instruction set}
+\todo{}
+
+\subsection{Explicit substitutions and copying concerns}
+\todo{}
+
+\subsection{Object files}
+\todo{}
+
+
 \section{Implementation}
 
 We have implemented, in Standard ML, a typechecker and compiler for the
 $\llib$-calculus, translating through the $\llib$-calculus with hereditary
 substitution, targetting the \camlib{}. We have also implemented a bytecode
-interpreter for the \camlib{} (written in C). \bs{Link to source code and
-  examples will be included in full thesis. Current work may be found at
-  \url{https://github.com/rntz/ttol}.}
+interpreter for the \camlib{} (written in C). \todo{}
+
+Current work is at \url{https://github.com/rntz/ttol}.
 
 
+\newpage
 \bibliographystyle{plain}
 \bibliography{thesis}
 
