@@ -735,9 +735,9 @@ dynamic semantics for the $\llhs$-calculus in Figure \ref{fig:llhsdynsem}.
 \newcommand{\camlib}{CAM\ensuremath{^{\text{lib}}}}
 \section{\camlib{}}
 
-The ``Categorical Abstract Machine'', or CAM\cite{cam87}, is a simple abstract
-machine used as a compilation target for $\lambda$-calculi and other functional
-languages. We extend a simplified version of the CAM with instructions that
+The ``Categorical Abstract Machine'', or CAM, is a simple abstract machine used
+as a compilation target for $\lambda$-calculi and other functional languages
+\cite{cam87}. We extend a simplified version of the CAM with instructions that
 implement our hereditary-substitution library operations. Efficient
 implementation requires careful use of explicit substitutions to avoid
 deep-copying.
@@ -745,19 +745,266 @@ deep-copying.
 \subsection{Instruction set}
 
 \newcommand{\semi}{;\,}
-\newcommand{\cons}[2]{{#1}.\,{#2}}
+\newcommand{\cons}{.\,}
 \newcommand{\nil}{\cdot}
+\newcommand{\Access}[1]{\ms{Access}(#1)}
+\newcommand{\Closure}[1]{\ms{Closure}(#1)}
+\newcommand{\Apply}{\ms{Apply}}
+\newcommand{\Return}{\ms{Return}}
 
 We begin with a simplified presentation of (a variant of) the CAM due to Xavier
-Leroy\cite{leroyzam05}. Our initial CAM is an abstract machine whose state is a
-three-tuple $\<C,E,S\>$ of an instruction sequence $C$, an environment $E$, and
-a stack $S$, defined by:
+Leroy \cite{leroyzam05}. Our initial CAM is an abstract machine whose state is a
+three-tuple $\<c,e,s\>$ of an instruction sequence $c$, an environment $e$, and
+a stack $s$, defined by:
 \[\begin{array}{rrcl}
-  \text{code} & C &::= I\semi C ~|~ \nil\\
-  \text{environment} & E &::= \cons{v}{E} ~|~ \nil\\
+  \text{code} & c &::=& i \semi c ~|~ \Return\\
+  \text{environment} & e &::=& v \cons e ~|~ \nil\\
+  \text{stack} & s &::=& v \cons s ~|~ \<c,e\>\! \cons s ~|~ \nil\\
+  \text{instructions} & i &::=& \Access{n} ~|~ \Closure{c} ~|~ \Apply\\
+  \text{values} & v &::=& [c,e]\\
+  \text{natural numbers} & n\\
 \end{array}\]
 
+The transitions of our simplified CAM are as follows:
+\begin{table}[!h]
+  \centering
+  \begin{tabular}{lll|lll}
+    \multicolumn{3}{c|}{\bf State before} &
+    \multicolumn{3}{c}{\bf State after}\\
+    \it Code & \it Env & \it Stack & \it Code & \it Env & \it Stack\\\hline
+    $\Access{n}\semi c$ & $v_0 \cons ... v_n \cons e$ & $s$ &
+    $c$ & $v_0 \cons ... v_n \cons e$ & $v_n \cons s$\\
+    $\Closure{c'}\semi c$ & $e$ & $s$ &
+    $c$ & $e$ & $[c',e] \cons s$\\
+    $\Apply\semi c$ & $e$ & $v \cons [c',e'] \cons s$ &
+    $c'$ & $v \cons e'$ & $\<c, e\>\! \cons s$\\
+    $\Return$ & $e$ & $v \cons \<c',e'\>\! \cons s$ &
+    $c'$ & $e'$ & $v \cons s$
+  \end{tabular}
+\end{table}
+
+\newcommand{\camt}[1]{\ensuremath{\mathcal{T}(#1)}}
+\newcommand{\camc}[2]{\ensuremath{\mathcal{C}({#1},\, {#2})}}
+
+Informally, the environment $e$ is a list of values, used to store local
+variables. The stack $s$ stores temporary result values $v$ and return frames
+$\<c,e\>$. Code $c$ is some sequence of instructions terminated by a $\Return$,
+which (naturally) returns the value on the top of the stack to the return frame
+below it. Our only values are closures $[c,e]$ of code and a captured
+environment. The $\Access{n}$ instruction accesses the $n^{\text{th}}$ value in
+the environment (ie. some local variable); $\Closure{c}$ creates a closure of
+$c$ with the current environment; and $\Apply$ applies a function.
+
+% FIXME: newpage?
+\newpage
+A simple translation $\camt{\_}$ from an untyped lambda calculus using
+DeBruijn-indexed variables into CAM code $c$ may be defined as follows:
+
+\[\begin{array}{rcl}
+  e &::=& n ~|~ \ulam{}{e} ~|~ e \ap e
+\end{array}\]\[
+\begin{array}{rcl}
+  \camt{e} &=& \camc{e}{\Return}\\
+  \camc{n}{c} &=& \Access{n}\semi c\\
+  \camc{\ulam{}{e}}{c} &=& \Closure{\camt{e}}\semi c\\
+  \camc{e_1 \ap e_2}{c} &=& \camc{e_1}{\camc{e_2}{\Apply\semi c}}
+\end{array}\]
+
+% TODO: paragraph on why we use CAM variant
+% - simple translation
+% - but still an abstract machine (instruction sequence, state machine)
+% - not particularly efficient, but this is not a design goal
+
+\newcommand{\Lib}[1]{\ms{Lib}(#1)}
+\newcommand{\Use}[1]{\ms{Use}(#1)}
+\newcommand{\Load}{\ms{Load}}
+\newcommand{\Func}[2]{\ms{Func}({#1},\,{#2})}
+\newcommand{\M}{\ensuremath{\mathcal{M}}}
+\newcommand{\R}{\ensuremath{\mathcal{R}}}
+\newcommand{\uncode}[1]{\ensuremath{\ms{code}^{-1}}\:(#1)}
+
+Intuitively speaking, all that is necessary to extend this CAM to handle the
+$\llhs$-calculus is to extend values $v$ with libraries $M$, extend the state
+with a ``library environment'' $\sigma$ representing bound library variables (in
+the same sense as $e$ represents bound term variables), and add instructions to
+handle our \ms{lib}, \ms{load}, and \ms{use} constructs. We do this in Figure
+\ref{fig:camlib}.
+
+However, to implement hereditary substitution efficiently we need a variant of
+\emph{explicit substitution}, as will be explained in \ref{sec:explsubst}. From
+this concern comes much added complexity, so the significance of the definitions
+in Figure \ref{fig:camlib} may not be immediately apparent.
+
+% We extend our CAM to the \camlib{} by adding extending values $v$ to include
+% (canonical) libraries, and replacing our environment $e$ with a pair $E =
+% \<e,\sigma\>$ of a normal environment $e$ and a library substitution $\sigma$.
+% Our state tuple thus becomes $\<c,\<e,\sigma\>\!,s\>$. Informally, $\sigma$
+% represents locally bound library variables in the same sense that $e$ represents
+% locally bound term variables.
+
+% In order to efficiently implement hereditary
+% substitution with the \camlib{}, however, we must use a variant of explicit
+% substitutions, as will be explained in \ref{sec:explsubst}; so we call it a
+% library \emph{substitution} rather than a library \emph{environment}. We must
+% also extend the syntax of canonical and atomic libraries $M$, $R$ to support
+% explicit substitution, renaming them $\M$, $\R$ respectively.
+
+\begin{figure}
+  \centering
+  \begin{description}
+  \item[Syntax:]
+    \[\begin{array}{rrcl}
+      \text{natural numbers} & n\\
+      \text{code} & c &::=& i\semi c ~|~ \Return\\
+      \text{term environment} & e &::=& v \cons e ~|~ \nil\\
+      \text{library substitution} &
+      \sigma &::=& \M \cons \sigma ~|~ \shift{n}\\
+      \text{stack} & s &::=& v \cons s ~|~ \<c,e,\sigma\>\! \cons s ~|~ \nil\\
+      \text{instructions} &
+      i &::=& \Access{n} ~|~ \Closure{c} ~|~ \Apply\\
+      &&~|~& \Func{n}{c} ~|~ \Lib{\M} ~|~ \Use{\R} ~|~ \Load\\
+      \text{values} & v &::=& [c,e,\sigma] ~|~ \lib{\M}\\
+      \text{canonical libraries} & \M &::=& \lift{\M}{n} ~|~
+      \at{\R} ~|~ \ulam{}{\M} ~|~ \<M,M\> ~|~
+      \code{(c)} ~|~ \code{(\lib{\M})}\\
+      \text{atomic libraries} & \R &::=& \lift{\R}{n} ~|~
+      0 ~|~ \R \ap \M ~|~ \proj{i}{\R}
+    \end{array}\]
+
+  \item[Operations:]\hfill
+    \[\begin{array}{rcll}
+      \uncode{\M} &\to& v & \text{code extraction}\\
+      \uncode{\code{(c)}} &=& [c,\nil,\sid]\\
+      \uncode{\code{(\lib{\M})}} &=& \lib{\M}\\
+      \\
+      \sigma \o \sigma &\to& \sigma & \text{substitution composition}\\
+      \shift{n} \o \shift{m} &=& \shift{(n + m)}\\
+      \shift{0} \o \sigma &=& \sigma\\
+      \shift{n+1} \o (\M \cons \sigma) &=& \shift{n} \o \sigma\\
+      (\M \cons \sigma) \o \sigma' &=& \esub{\sigma'}{\M} \cons (\sigma \o \sigma')\\
+    \end{array}\]
+
+    See Figure \ref{fig:camlibsubst} for the definitions of substitution on
+    libraries $\esub{\sigma}{\M} \to \M$, atoms $\esub{\sigma}{\R} \to \M$, and
+    code $\esub{\sigma}{c} \to c$.
+
+  \item[Transitions:]\hfill
+
+  \begin{tabular}{ccc|ccc}
+    \multicolumn{3}{c|}{\bf State before} &
+    \multicolumn{3}{c}{\bf State after}\\
+    \it Code & \it Env/Subst & \it Stack &
+    \it Code & \it Env/Subst & \it Stack\\\hline
+    $\Access{n}\semi c$ & $\<v_0 \cons ... v_n \cons e, \sigma\>$ & $s$ &
+    $c$ & $\<v_0 \cons ... v_n \cons e, \sigma\>$ & $v_n \cons s$\\
+    $\Closure{c'}\semi c$ & $\<e,\sigma\>$ & $s$ &
+    $c$ & $\<e,\sigma\>$ & $[c',e,\sigma] \cons s$\\
+    $\Apply\semi c$ & $\<e,\sigma\>$ & $v \cons [c', e',\sigma'] \cons s$ &
+    $c'$ & $\<v \cons e',\sigma'\>$ & $\<c, e, \sigma\> \cons s$\\
+    $\Return$ & $\<e,\sigma\>$ & $v \cons \<c',e',\sigma'\> \cons s$ &
+    $c'$ & $\<e',\sigma'\>$ & $v \cons s$\\
+    % Begin library instructions
+    $\Func{n}{c'}\semi c$ & $\<e,\sigma\>$ & $s$ &
+    $c$ & $\<e,\sigma\>$ & $[c', \nil, \sid] \cons s$\\
+    $\Lib{\M}\semi c$ & $\<e,\sigma\>$ & $s$ &
+    $c$ & $\<e,\sigma\>$ & $\lib{(\esub{\sigma}{\M})} \cons s$\\
+    $\Use{\R}\semi c$ & $\<e,\sigma\>$ & $s$ &
+    $c$ & $\<e,\sigma\>$ & $\uncode{\esub{\sigma}{\R}} \cons s$\\
+    $\Load\semi c$ & $\<e,\sigma\>$ & $\lib{\M}\cons s$ &
+    $c$ & $\<e, \M \cons \sigma'\>$ & $s$\\
+    &&&&\multicolumn{2}{l}{where $\sigma' = \at{0} \cons (\sigma \o \shift{1})$}
+  \end{tabular}
+
+  \end{description}
+
+  \caption{The \camlib{}}
+  \label{fig:camlib}
+\end{figure}
+
+\begin{figure}
+  \begin{description}
+  \item[Substitution on canonical libraries, $\esub{\sigma}{\M} \to \M$:]
+    \[\begin{array}{rcl}
+      \esub{\sid}{\M} &=& \M\\
+      \esub{\sigma}{\lift{\M}{n}} &=& \esub{\shift{n} \o \sigma}{\M}\\
+      \esub{\shift{n}}{\M} &=& \lift{\M}{n}\\
+      \esub{\sigma}{\<\M_1,\M_2\>} &=& \<\esub{\sigma}{\M_1}, \esub{\sigma}{\M_2}\>\\
+      \esub{\sigma}{\ulam{}{\M}} &=&
+      \ulam{}{\esub{\at{0} \cons (\sigma \o \shift{1})}{\M}}\\
+      \esub{\sigma}{\code{(c)}} &=& \code{(\esub{\sigma}{c})}\\
+      \esub{\sigma}{\code{(\lib{\M})}} &=& \code{(\esub{\sigma}{\M})}\\
+      \esub{\sigma}{\at{\R}} &=& \esub{\sigma}{\R}\\
+    \end{array}\]
+
+  \item[Substitution on atomic libraries, $\esub{\sigma}{\R} \to \M$:]
+    \[\begin{array}{rcl}
+      \esub{\sid}{\R} &=& \R\\
+      \esub{\sigma}{\lift{\R}{n}} &=& \esub{\shift{n} \o \sigma}{\R}\\
+      \esub{\shift{n}}{\R} &=& \lift{\R}{n}\\
+      \esub{\M \cons \sigma}{0} &=& \M\\
+      \esub{\sigma}{(\R \ap \M)} &=&
+      \begin{cases}
+        \at{((\dolift{\R'}{n}) \ap (\esub{\sigma}{\M}))}
+        & \text{if}~\esub{\sigma}{\R} \approx \lift{(\at{\R'})}{n}\\
+        \esub{(\esub{\sigma}{\M}) \cons \shift{n}}{\M'}
+        & \text{if}~\esub{\sigma}{\R} \approx \lift{(\ulam{}{\M'})}{n}\\
+      \end{cases}\\
+      \esub{\sigma}{(\proj{i}{\R})} &=&
+      \begin{cases}
+        \dolift{(\at{(\proj{i}{\R'})})}{n}
+        & \text{if}~\esub{\sigma}{\R} \approx \lift{(\at{\R'})}{n}\\
+        \dolift{\M_i}{n}
+        & \text{if}~\esub{\sigma}{\R} \approx \lift{\<\M_1,\M_2\>}{n}
+      \end{cases}
+    \end{array}\]
+
+    Where $\M_1 \approx \M_2$ iff either $\M_1 = \M_2$ or $\lift{\M_1}{0} = \M_2$,
+    and defining $\dolift{\M}{n}$ and $\dolift{\R}{n}$ as follows:
+    \[\begin{array}{rcl}
+      \dolift{\M}{0} &=& \M\\
+      \dolift{(\lift{\M}{n})}{m} &=& \lift{\M}{n+m}\\
+      \dolift{\M}{n} &=& \lift{\M}{n}
+      \end{array}\qquad\begin{array}{rcl}
+      \dolift{\R}{0} &=& \R\\
+      \dolift{(\lift{\R}{n})}{m} &=& \lift{\R}{n+m}\\
+      \dolift{\R}{n} &=& \lift{\R}{n}
+    \end{array}\]
+
+  \item[Substitution on instructions sequences, $\esub{\sigma}{c} \to c$:]
+    \[\begin{array}{rcl}
+      \esub{\sid}{c} &=& c\\
+      \esub{\sigma}{\Return} &=& \Return\\
+      \esub{\sigma}{\Load\semi c} &=&
+      \Load\semi \esub{\at{0} \cons (\sigma \o \shift{1})}{c}\\
+      \esub{\sigma}{\Lib{\M}\semi c} &=& \Lib{\esub{\sigma}{\M}}\semi \esub{\sigma}{c}\\
+      \esub{\sigma}{\Use{\R}\semi c} &=&
+      \begin{cases}
+        \Func{n}{c'}\semi \esub{\sigma}{c} &
+        \text{if}~\esub{\sigma}{\R} \approx \lift{(\code{(c')})}{n}\\
+        \Lib{\dolift{\M}{n}}\semi \esub{\sigma}{c} &
+        \text{if}~\esub{\sigma}{\R} \approx \lift{(\code{(\lib{\M})})}{n}\\
+        \Use{\dolift{\R'}{n}}\semi \esub{\sigma}{c} &
+        \text{if}~\esub{\sigma}{\R} \approx \lift{(\at{\R})}{n}
+      \end{cases}\\
+      \esub{\sigma}{\Closure{c'}\semi c} &=&
+      \Closure{\esub{\sigma}{c'}}\semi \esub{\sigma}{c}\\
+      \esub{\sigma}{\Func{n}{c'}\semi c} &=&
+      \begin{cases}
+        \Func{n}{c'}\semi \esub{\sigma}{c} &
+        \text{if}~\shift{n} \o \sigma = \shift{n}\\
+        \Func{0}{\esub{\shift{n} \o \sigma}{c'}}\semi \esub{\sigma}{c} & \text{otherwise}
+      \end{cases}\\
+      \esub{\sigma}{i\semi c} &=& i\semi \esub{\sigma}{c}
+    \end{array}\]
+
+  \end{description}
+
+  \caption{Explicit hereditary substitution in the \camlib{}}
+  \label{fig:camlibsubst}
+\end{figure}
+
 \subsection{Explicit substitutions and copying concerns}
+\label{sec:explsubst}
 \todo{}
 
 \subsection{Object files}
@@ -767,9 +1014,9 @@ a stack $S$, defined by:
 \section{Implementation}
 
 We have implemented, in Standard ML, a typechecker and compiler for the
-$\llib$-calculus, translating through the $\llib$-calculus with hereditary
-substitution, targetting the \camlib{}. We have also implemented a bytecode
-interpreter for the \camlib{} (written in C). \todo{}
+$\llib$-calculus, translating through the $\llhs$-calculus, targetting the
+\camlib{}. We have also implemented, in C, a bytecode interpreter for the
+\camlib{}. \todo{}
 
 Current work is at \url{https://github.com/rntz/ttol}.
 
