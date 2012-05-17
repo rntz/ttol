@@ -482,17 +482,11 @@ of concept. The syntax and typing rules are given in Figure \ref{fig:llib}.
 
 \subsection{Suspensions versus values}
 
-Careful inspection of Figure \ref{fig:llib} reveals the unusual judgment $e
-\valish$. This is meant to convey that $e$ is close enough to a value as makes
-no difference. The troubling rule here (the reason we don't just call it $e
-\isval$) is the axiom $\lib{L} \valish$, which puts no constraints on the form
-of $L$. We'll see why this is acceptable later; for now, $e \valish$ may be read
-as if it said ``$e$ is a value''.
-
-$e \valish$ notably makes an appearance as a premise of the $\upI$ rule:
+Careful inspection of Figure \ref{fig:llib} reveals the use of $e \isval$ as a
+premise of the $\upI$ rule:
 \[
 \infer{\Psi;\D \ent \code{e} \isa \up{\tau}}{
-  e \valish &
+  e \isval &
   \Psi;\D;\ecx \ent e \isa \tau}
 \]
 
@@ -501,12 +495,14 @@ requires that in the library $\code{e}$, the enclosed term $e$ be a value.
 Without this constraint, we are forced to make an ugly choice: either evaluating
 a library term $L$ may involve evaluating embedded terms $e$, bringing back the
 danger of unrestricted side-effects during linking; or, we must take $\code{e}$
-to be a \emph{suspension} that delays evaluating $e$ until it is extracted
-via $\ms{use}$. The former is clearly unacceptable. The latter is a principled
+to be a \emph{suspension} that delays evaluating $e$ until it is extracted via
+$\ms{use}$. The former is clearly unacceptable. The latter is a principled
 solution, but fails to capture the semantics of real-world libraries. We
-therefore add the $e \valish$ restriction, on the grounds that it better models
+therefore add the $e \isval$ restriction, on the grounds that it better models
 real-world semantics at a neglible cost to expressivity.
-% TODO: footnote re if you want suspensions, just use a function
+
+% FIXME: note on regularity principle! but you can get a modified version if you
+% use explicit suspensions.
 
 
 \subsection{Dynamic semantics, partial linking, and hereditary substitution}
@@ -565,13 +561,6 @@ dynamic semantics for the $\llhs$-calculus in Figure \ref{fig:llhsdynsem}.
 \todo{Explain that it subsumes evaluation rules for library level; progress \&
   preservation become substitution lemmas.}
 
-Given this, the translation from the original $\llib$-calculus into $\llhs$ is
-easy to define, and it is this translation that justifies the laxness of the
-judgment $e \valish$. Post-translation, $\lib{L}$ becomes $\lib{M}$, and thanks
-to the syntactic restrictions of hereditary substitution, $M$ is guaranteed not
-to require further reduction (modulo containing some free variables); so while
-$\lib{L}$ may not \emph{be} a value, it \emph{translates} to one.
-
 
 \begin{figure}
   \centering
@@ -586,8 +575,8 @@ $\lib{L}$ may not \emph{be} a value, it \emph{translates} to one.
 
     \item[Judgments:]\hfill\\
       $\Psi;\D \ent L \isa I$ splits into $\Psi;\D \ent M \isa I$ and $\Psi;\D
-      \ent R \isa I$\\
-      $e \valish$ is replaced by $e \isval$
+      \ent R \isa I$.\\
+      $L \isval$ disappears.
 
     \item[Rules:]
       \[
