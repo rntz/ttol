@@ -10,6 +10,7 @@
 \usepackage{latexsym}           %for \Box
 \usepackage{multicol}
 \usepackage{url}
+\usepackage[numbers]{natbib}
 
 \usepackage{proof}
 \usepackage{notation}
@@ -617,7 +618,6 @@ dynamic semantics for the $\llhs$-calculus in Figure \ref{fig:llhsdynsem}.
       substitution, defined in Figure \ref{fig:llhsdynsem}.
       % TODO: insert ref to proof of substitution lemma.
       \begin{align*}
-        \trans{I} &\in M\\
         \trans{u} &= \at{u}\\
         \trans{\lam{u}{I}{L}} &= \lam{u}{I}{\trans{L}}\\
         \trans{\<L_1, L_2\>} &= \<\trans{L_1}, \trans{L_2}\>\\
@@ -735,14 +735,27 @@ dynamic semantics for the $\llhs$-calculus in Figure \ref{fig:llhsdynsem}.
 \newcommand{\camlib}{CAM\ensuremath{^{\text{lib}}}}
 \section{\camlib{}}
 
-The ``Categorical Abstract Machine'', or CAM, is a simple abstract machine used
-as a compilation target for $\lambda$-calculi and other functional languages. We
-extend a simplified version of the CAM with instructions that implement our
-hereditary-substitution library operations. Efficient implementation requires
-careful use of explicit substitutions to avoid deep-copying. \todo{}
+The ``Categorical Abstract Machine'', or CAM\cite{cam87}, is a simple abstract
+machine used as a compilation target for $\lambda$-calculi and other functional
+languages. We extend a simplified version of the CAM with instructions that
+implement our hereditary-substitution library operations. Efficient
+implementation requires careful use of explicit substitutions to avoid
+deep-copying.
 
 \subsection{Instruction set}
-\todo{}
+
+\newcommand{\semi}{;\,}
+\newcommand{\cons}[2]{{#1}.\,{#2}}
+\newcommand{\nil}{\cdot}
+
+We begin with a simplified presentation of (a variant of) the CAM due to Xavier
+Leroy\cite{leroyzam05}. Our initial CAM is an abstract machine whose state is a
+three-tuple $\<C,E,S\>$ of an instruction sequence $C$, an environment $E$, and
+a stack $S$, defined by:
+\[\begin{array}{rrcl}
+  \text{code} & C &::= I\semi C ~|~ \nil\\
+  \text{environment} & E &::= \cons{v}{E} ~|~ \nil\\
+\end{array}\]
 
 \subsection{Explicit substitutions and copying concerns}
 \todo{}
@@ -762,7 +775,7 @@ Current work is at \url{https://github.com/rntz/ttol}.
 
 
 \newpage
-\bibliographystyle{plain}
+\bibliographystyle{plainnat}
 \bibliography{thesis}
 
 \end{document}
